@@ -52,6 +52,14 @@ def lat_to_tile_y(lat, zoom):
 	) / 2.0 * (2 ** zoom)
 
 
+def inclusive_min_tile(value):
+	nearest = round(value)
+	if math.isclose(value, nearest, rel_tol=0.0, abs_tol=1e-10):
+		return int(nearest)
+
+	return math.floor(value)
+
+
 def exclusive_max_tile(value):
 	nearest = round(value)
 	if math.isclose(value, nearest, rel_tol=0.0, abs_tol=1e-10):
@@ -63,9 +71,9 @@ def exclusive_max_tile(value):
 def tiles_for_bbox(bounds, zoom):
 	west, south, east, north = bounds
 
-	x_min = math.floor(lon_to_tile_x(west, zoom))
+	x_min = inclusive_min_tile(lon_to_tile_x(west, zoom))
 	x_max = exclusive_max_tile(lon_to_tile_x(east, zoom))
-	y_min = math.floor(lat_to_tile_y(north, zoom))
+	y_min = inclusive_min_tile(lat_to_tile_y(north, zoom))
 	y_max = exclusive_max_tile(lat_to_tile_y(south, zoom))
 
 	return [
