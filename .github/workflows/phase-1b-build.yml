@@ -43,6 +43,7 @@ jobs:
 
       - name: Prepare Mapterhorn DEM
         run: |
+          mkdir -p tmp
           /usr/bin/time -v \
             python scripts/prepare_phase1a_dem.py \
             --config config/north_sea_phase1b.json \
