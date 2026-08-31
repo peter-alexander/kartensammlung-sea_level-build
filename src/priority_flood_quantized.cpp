@@ -11,6 +11,7 @@
 struct Options {
 	std::string elevationPath;
 	std::string seaMaskPath;
+	std::string boundaryThresholdPath;
 	std::string outputPath;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
@@ -36,6 +37,8 @@ static Options parseArgs(int argc, char** argv) {
 			options.elevationPath = requireValue(i, argc, argv, arg);
 		} else if (arg == "--sea-mask") {
 			options.seaMaskPath = requireValue(i, argc, argv, arg);
+		} else if (arg == "--boundary-threshold") {
+			options.boundaryThresholdPath = requireValue(i, argc, argv, arg);
 		} else if (arg == "--output") {
 			options.outputPath = requireValue(i, argc, argv, arg);
 		} else if (arg == "--width") {
@@ -145,6 +148,7 @@ static std::uint8_t quantizedElevationLevel(
 static std::vector<std::uint8_t> computeThreshold(
 	const std::vector<float>& elevation,
 	const std::vector<std::uint8_t>& seaMask,
+	const std::vector<std::uint8_t>* boundaryThreshold,
 	std::uint32_t width,
 	std::uint32_t height,
 	std::uint8_t maxLevel,
@@ -160,7 +164,22 @@ static std::vector<std::uint8_t> computeThreshold(
 		static_cast<std::size_t>(maxLevel) + 1
 	);
 
-	std::size_t seedCount = 0;
+	std::size_t seaSeedCount = 0;
+	std::size_t boundarySeedCount = 0;
+
+	auto enqueueSeed = [&](std::uint32_t index, std::uint8_t level) {
+		if (level > maxLevel) {
+			return false;
+		}
+		if (threshold[index] <= level) {
+			return false;
+		}
+
+		threshold[index] = level;
+		buckets[level].push_back(index);
+		return true;
+	};
+
 	for (std::size_t index = 0; index < cellCount; ++index) {
 		if (seaMask[index] == 0) {
 			continue;
@@ -170,22 +189,69 @@ static std::vector<std::uint8_t> computeThreshold(
 			throw std::runtime_error("Raster ist für 32-Bit-Zellindizes zu groß.");
 		}
 
-		threshold[index] = 0;
-		buckets[0].push_back(static_cast<std::uint32_t>(index));
-		++seedCount;
+		if (enqueueSeed(static_cast<std::uint32_t>(index), 0)) {
+			++seaSeedCount;
+		}
 	}
 
-	if (seedCount == 0) {
-		throw std::runtime_error("Sea-Maske enthält keine Seed-Zelle.");
+	if (boundaryThreshold) {
+		if (boundaryThreshold->size() != cellCount) {
+			throw std::runtime_error("Boundary-Threshold hat eine falsche Rastergröße.");
+		}
+
+		for (std::size_t index = 0; index < cellCount; ++index) {
+			const std::uint8_t coarseLevel = (*boundaryThreshold)[index];
+
+			if (coarseLevel == unvisited || coarseLevel == sentinel) {
+				continue;
+			}
+			if (coarseLevel > sentinel) {
+				throw std::runtime_error(
+					"Boundary-Threshold enthält einen ungültigen Wert."
+				);
+			}
+
+			const std::uint32_t row = static_cast<std::uint32_t>(index / width);
+			const std::uint32_t col = static_cast<std::uint32_t>(index - row * width);
+
+			if (
+				row != 0
+				&& col != 0
+				&& row + 1 != height
+				&& col + 1 != width
+			) {
+				throw std::runtime_error(
+					"Boundary-Threshold enthält einen Seed außerhalb des Rasterrands."
+				);
+			}
+
+			const std::uint8_t cellLevel = quantizedElevationLevel(
+				elevation[index],
+				maxLevel,
+				step
+			);
+
+			if (cellLevel == sentinel) {
+				continue;
+			}
+
+			const std::uint8_t seedLevel = std::max(coarseLevel, cellLevel);
+			if (enqueueSeed(static_cast<std::uint32_t>(index), seedLevel)) {
+				++boundarySeedCount;
+			}
+		}
+	}
+
+	if (seaSeedCount == 0 && boundarySeedCount == 0) {
+		throw std::runtime_error(
+			"Weder Sea-Maske noch Boundary-Threshold enthalten einen nutzbaren Seed."
+		);
 	}
 
 	std::size_t processed = 0;
+	std::size_t staleEntries = 0;
 
 	auto visitNeighbor = [&](std::uint32_t neighborIndex, std::uint8_t currentLevel) {
-		if (threshold[neighborIndex] != unvisited) {
-			return;
-		}
-
 		const std::uint8_t cellLevel = quantizedElevationLevel(
 			elevation[neighborIndex],
 			maxLevel,
@@ -193,11 +259,17 @@ static std::vector<std::uint8_t> computeThreshold(
 		);
 
 		if (cellLevel == sentinel) {
-			threshold[neighborIndex] = sentinel;
+			if (threshold[neighborIndex] == unvisited) {
+				threshold[neighborIndex] = sentinel;
+			}
 			return;
 		}
 
 		const std::uint8_t nextLevel = std::max(currentLevel, cellLevel);
+		if (threshold[neighborIndex] <= nextLevel) {
+			return;
+		}
+
 		threshold[neighborIndex] = nextLevel;
 		buckets[nextLevel].push_back(neighborIndex);
 	};
@@ -208,6 +280,12 @@ static std::vector<std::uint8_t> computeThreshold(
 
 		for (std::size_t cursor = 0; cursor < bucket.size(); ++cursor) {
 			const std::uint32_t index = bucket[cursor];
+
+			if (threshold[index] != level) {
+				++staleEntries;
+				continue;
+			}
+
 			const std::uint32_t row = index / width;
 			const std::uint32_t col = index - row * width;
 
@@ -260,8 +338,10 @@ static std::vector<std::uint8_t> computeThreshold(
 	}
 
 	std::cerr
-		<< "seeds=" << seedCount
+		<< "sea_seeds=" << seaSeedCount
+		<< " boundary_seeds=" << boundarySeedCount
 		<< " processed=" << processed
+		<< " stale_entries=" << staleEntries
 		<< " sentinel_or_disconnected="
 		<< std::count(threshold.begin(), threshold.end(), sentinel)
 		<< " disconnected=" << disconnected
@@ -291,9 +371,20 @@ int main(int argc, char** argv) {
 			cellCount
 		);
 
+		std::vector<std::uint8_t> boundaryThreshold;
+		const std::vector<std::uint8_t>* boundaryThresholdPtr = nullptr;
+		if (!options.boundaryThresholdPath.empty()) {
+			boundaryThreshold = readBinary<std::uint8_t>(
+				options.boundaryThresholdPath,
+				cellCount
+			);
+			boundaryThresholdPtr = &boundaryThreshold;
+		}
+
 		const std::vector<std::uint8_t> threshold = computeThreshold(
 			elevation,
 			seaMask,
+			boundaryThresholdPtr,
 			options.width,
 			options.height,
 			options.maxLevel,
