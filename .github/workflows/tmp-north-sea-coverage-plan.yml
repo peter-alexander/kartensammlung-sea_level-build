@@ -1,0 +1,126 @@
+name: Temporary North Sea coverage plan
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-north-sea-coverage-plan.yml
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install planner dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy shapely mapbox-vector-tile
+
+      - name: Generate North Sea refinement plan
+        run: |
+          /usr/bin/time -v \
+            python scripts/coverage_planner.py \
+            --bbox=-2.5,49.5,13.0,58.0 \
+            --output-dir tmp/coverage-plan \
+            --coverage-zoom 8 \
+            --cache-dir cache \
+            --workers 12 \
+            2>&1 | tee tmp/coverage-plan.log
+
+      - name: Validate and summarize plan
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan = json.loads(
+              Path("tmp/coverage-plan/plan.json").read_text()
+          )
+
+          sources = plan["sources"]
+          by_source = {item["source"]: item for item in sources}
+
+          assert "glo30" in by_source
+          assert plan["tier2"]["source_count"] > 0
+
+          ahn = [
+              item
+              for item in sources
+              if "ahn" in item["source"].lower()
+              or "hoogtebestand" in (item.get("name") or "").lower()
+          ]
+
+          print("coverage tiles:", plan["coverage"]["tile_count"])
+          print("sources:", plan["coverage"]["source_count"])
+          print("tier2 sources:", plan["tier2"]["source_count"])
+          print(
+              "tier3 QA candidates:",
+              plan["tier3_candidates"]["source_count"],
+          )
+          print(
+              "intersecting high-resolution archives:",
+              plan["high_resolution_archives"]["count"],
+          )
+          print(
+              "high-resolution archive bytes:",
+              plan["high_resolution_archives"]["total_bytes"],
+          )
+          print("base:", json.dumps(plan["base"], indent=2))
+
+          print("\n=== Tier 2 sources ===")
+          for item in sources:
+              if item["automatic_tier"] != 2:
+                  continue
+              print(
+                  item["source"],
+                  "resolution=", item["resolution_m"],
+                  "zoom=", item["recommended_processing_zoom"],
+                  "ground=", item["recommended_ground_resolution_m"],
+                  "tier3=", item["tier3_candidate"],
+              )
+
+          print("\n=== AHN matches ===")
+          for item in ahn:
+              print(json.dumps(item, indent=2))
+
+          if not ahn:
+              raise RuntimeError(
+                  "Keine AHN-Quelle im Nordseeplan gefunden."
+              )
+          PY
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: north-sea-coverage-plan
+          path: |
+            tmp/coverage-plan/plan.json
+            tmp/coverage-plan/sources.geojson
+            tmp/coverage-plan/tier2.geojson
+            tmp/coverage-plan/tier3-candidates.geojson
+            tmp/coverage-plan.log
+          retention-days: 14
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-north-sea-coverage-plan.yml
+          git commit -m "Remove temporary North Sea coverage plan workflow"
+          git push
