@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
 import math
 from pathlib import Path
 
 
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "north_sea_pilot.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "north_sea_pilot.json"
 EARTH_RADIUS = 6378137.0
 WORLD_METERS = 2.0 * math.pi * EARTH_RADIUS
 
@@ -23,7 +24,12 @@ def lat_to_tile_y(lat, zoom):
 
 
 def main():
-	config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+	args = parser.parse_args()
+
+	config_path = Path(args.config)
+	config = json.loads(config_path.read_text(encoding="utf-8"))
 	bounds = config["bounds"]
 	dem = config["dem"]
 	zoom = int(dem["processing_zoom"])
@@ -50,6 +56,9 @@ def main():
 	bytes_with_work = cells * (4 + 1 + 1 + 1 + 4)
 
 	report = {
+		"config": str(config_path),
+		"name": config.get("name"),
+		"bounds": bounds,
 		"zoom": zoom,
 		"tile_range": {
 			"x": [x0, x1],
