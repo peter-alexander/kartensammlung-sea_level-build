@@ -144,6 +144,10 @@ def main():
 			raise AssertionError(report)
 		if report["core_vs_upsampled_base"]["max_abs_diff_m"] != 8:
 			raise AssertionError(report)
+		if report["source_coverage_seam_vs_upsampled_base"]["count"] != 4:
+			raise AssertionError(report)
+		if report["parent_clip_boundary_vs_upsampled_base"]["count"] != 0:
+			raise AssertionError(report)
 
 	print("ok")
 
