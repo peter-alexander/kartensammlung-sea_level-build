@@ -107,7 +107,7 @@ def flooded_fraction(threshold, levels):
 	}
 
 
-def compare_to_fine(coarse, fine, factor):
+def compare_to_fine(coarse, fine, factor, levels):
 	if fine.shape[0] != coarse.shape[0] * factor:
 		raise ValueError("Fine/coarse heights do not align.")
 	if fine.shape[1] != coarse.shape[1] * factor:
@@ -128,24 +128,40 @@ def compare_to_fine(coarse, fine, factor):
 	lookup = np.asarray(LEVELS_M, dtype=np.float64)
 	valid_diff = lookup[coarse[valid]] - lookup[fine_center[valid]]
 
+	slider_state_disagreement_pct = {}
+	for level in levels:
+		class_index = class_for_meters(level)
+		different = (
+			(coarse <= class_index)
+			!= (fine_center <= class_index)
+		)
+		slider_state_disagreement_pct[format_level(level)] = round(
+			float(np.mean(different) * 100),
+			6,
+		)
+
 	if valid_diff.size == 0:
 		return {
 			"valid_cells": 0,
-		"mean_abs_diff_m": None,
-		"median_abs_diff_m": None,
-		"pct_diff_gt_1m": None,
-		"pct_diff_gt_2m": None,
-		"pct_diff_gt_5m": None,
-	}
+			"excluded_sentinel_cells": int(coarse.size),
+			"mean_abs_diff_m": None,
+			"median_abs_diff_m": None,
+			"pct_diff_gt_1m": None,
+			"pct_diff_gt_2m": None,
+			"pct_diff_gt_5m": None,
+			"slider_state_disagreement_pct": slider_state_disagreement_pct,
+		}
 
 	abs_diff = np.abs(valid_diff)
 	return {
 		"valid_cells": int(valid_diff.size),
+		"excluded_sentinel_cells": int(coarse.size - valid_diff.size),
 		"mean_abs_diff_m": round(float(np.mean(abs_diff)), 4),
 		"median_abs_diff_m": round(float(np.median(abs_diff)), 4),
 		"pct_diff_gt_1m": round(float(np.mean(abs_diff > 1) * 100), 4),
 		"pct_diff_gt_2m": round(float(np.mean(abs_diff > 2) * 100), 4),
 		"pct_diff_gt_5m": round(float(np.mean(abs_diff > 5) * 100), 4),
+		"slider_state_disagreement_pct": slider_state_disagreement_pct,
 	}
 
 
@@ -188,10 +204,10 @@ def main():
 
 	z13 = runs[13][1]
 	report["comparison_to_z13_center_sample"]["z11"] = compare_to_fine(
-		runs[11][1], z13, 4
+		runs[11][1], z13, 4, levels
 	)
 	report["comparison_to_z13_center_sample"]["z12"] = compare_to_fine(
-		runs[12][1], z13, 2
+		runs[12][1], z13, 2, levels
 	)
 
 	for zoom in (11,12):
