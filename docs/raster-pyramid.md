@@ -33,6 +33,9 @@ Dadurch:
 
 ## Messung Phase 1A
 
+Diese Messung ist ein historischer V1-Benchmark und verwendet noch die damaligen
+1-m-Thresholdklassen bis 100 m.
+
 Verglichen wurde die überflutete Gesamtfläche für:
 
 0, 1, 2, 5, 10, 20, 50 und 100 m.

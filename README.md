@@ -28,10 +28,23 @@ reduziert die maximale gemessene Fine/Base-Seam-Abweichung von 14 m auf 4 m;
 kein getesteter Seam-Pixel unterscheidet sich noch um mehr als 5 m.
 
 Das resultierende Z6–Z12-PMTiles ist rund 10,8 MB groß und wurde erfolgreich
-verifiziert.
+verifiziert. Dieses veröffentlichte Phase-1C-Artefakt verwendet noch das
+historische V1-Schema mit 1-m-Schritten bis 100 m.
 
-Nächster Schritt ist der visuelle Test dieses zusammengesetzten Datensatzes in
-der Kartensammlung und danach die Skalierung auf ein größeres Parent-Gebiet.
+Für V2 ist der Modellbereich auf 0–70 m begrenzt und nichtlinear quantisiert:
+
+- 0–2 m: 0,1-m-Schritte,
+- >2–5 m: 0,25-m-Schritte,
+- >5–20 m: 1-m-Schritte,
+- >20–70 m: 5-m-Schritte.
+
+Das ergibt 58 reguläre Klassen plus Sentinel. Die numerische Klassenauflösung ist
+nicht mit der regional tatsächlich verfügbaren DEM-Genauigkeit gleichzusetzen;
+diese hängt von der jeweiligen Quelle ab.
+
+Nächster Schritt ist ein erneuter Phase-1C-Build mit V2 und danach der visuelle
+Test in der Kartensammlung. Vor einer endgültigen Produktionsauflösung wird auch
+der Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholt.
 
 ## Struktur
 
@@ -49,7 +62,7 @@ Priority Flood / Minimax-Konnektivität
     ↓
 Inundation Threshold
     ↓
-Quantisierung 0…100 m
+Quantisierung 0…70 m, nichtlinear
     ↓
 Terrarium-Raster
     ↓

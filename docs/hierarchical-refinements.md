@@ -30,8 +30,9 @@ Der initiale Randwert lautet:
 Damit kann eine grobe Parent-Zelle keine im feinen DEM höhere lokale Randbarriere
 unterschlagen.
 
-Parent-Sentinel `101` bedeutet innerhalb des 0–100-m-Modells keinen nutzbaren
-Randweg. `255` bedeutet kein Boundary-Seed.
+Im V2-Schema sind die 58 regulären Klassen als Indizes `0–57` gespeichert.
+Parent-Sentinel `58` bedeutet einen Threshold über 70 m bzw. keinen innerhalb
+des Modellbereichs nutzbaren Randweg. `255` bedeutet kein Boundary-Seed.
 
 ## Priority-Flood-Kern
 
@@ -41,8 +42,8 @@ Randweg. `255` bedeutet kein Boundary-Seed.
 
 Die Boundary-Datei hat dieselbe Rastergröße wie das feine DEM:
 
-- 0–100 = aktiver Randseed,
-- 101 = Parent-Sentinel,
+- 0–57 = aktiver Randseed nach V2-Klassenschema,
+- 58 = Parent-Sentinel (>70 m),
 - 255 = kein Seed.
 
 Aktive Boundary-Seeds sind nur auf dem äußersten Rasterrand zulässig. Ein
@@ -134,6 +135,11 @@ Die notwendige Halo-Breite wird regional getestet; im ersten realen Benchmark
 wurde eine Z12-Tilebreite bzw. 512 Pixel verwendet.
 
 ## Realer Benchmark Z11 → Z12
+
+Der folgende Benchmark ist historisch und wurde noch mit dem damaligen
+V1-Schema (1-m-Schritte bis 100 m) gerechnet. Seine topologische Aussage zur
+Boundary-Vererbung bleibt gültig; die Auflösungsmetriken werden für V2 erneut
+überprüft.
 
 Gebiet:
 
@@ -368,6 +374,13 @@ Der erste vollständige hierarchische Phase-1C-Pilot funktioniert:
 
 Das resultierende PMTiles wurde erfolgreich verifiziert.
 
-Der nächste Schritt ist daher kein weiterer Algorithmus-Prototyp mehr, sondern
-der erste visuelle Test dieses zusammengesetzten Datensatzes in der
-Kartensammlung und anschließend die Planung eines größeren Parent-Gebiets.
+Das veröffentlichte Phase-1C-PMTiles ist ein historisches V1-Artefakt. Der
+Pipeline-Code verwendet inzwischen V2 mit 58 nichtlinearen Klassen bis 70 m.
+
+Nächste Schritte:
+
+1. Phase 1C mit V2 neu bauen,
+2. Seam-QA und Dateigröße erneut prüfen,
+3. den zusammengesetzten V2-Datensatz visuell in der Kartensammlung testen,
+4. den Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholen,
+5. erst danach die größere Parent-Region festlegen.

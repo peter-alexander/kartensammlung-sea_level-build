@@ -83,7 +83,7 @@ Gleiche:
 - Mapterhorn-Quelle,
 - OSM-Ocean-Maske,
 - 4er-Nachbarschaft,
-- 1-m-Thresholdquantisierung,
+- damalige V1-Thresholdquantisierung mit 1-m-Schritten,
 - Bounding Box.
 
 Nur der Processing-Zoom wurde geändert.
@@ -171,8 +171,9 @@ Begründung:
 - topologisch fast identisch zu Z13,
 - nur ein Viertel der Z13-Zellen,
 - wesentlich weniger RAM, I/O und spätere PNG/PMTiles-Arbeit,
-- 1-m-Sliderquantisierung macht einen Teil der zusätzlichen DEM-Feinheit ohnehin
-  unsichtbar,
+- Z12 lag im V1-Benchmark topologisch sehr nahe an Z13; mit der feineren
+  V2-Quantisierung muss geprüft werden, ob zusätzliche Unterschiede sichtbar
+  werden,
 - vermeidet unnötige Verarbeitung von 0,5–5-m-Quelldaten, wenn sie im
   Endprodukt keinen messbaren Unterschied erzeugen.
 
@@ -223,7 +224,7 @@ sondern muss die reale Bodenauflösung bzw. die Quelldatenauflösung berücksich
 ### Tier 1 – Global Base
 
 - globale ~30-m-Quelle,
-- Threshold 0–100 m,
+- Threshold 0–70 m mit V2-Klassenschema,
 - vollständige weltweite/continentale Connectivity,
 - Zielraster ungefähr in nativer Auflösung.
 
@@ -297,15 +298,18 @@ obwohl im Refinement selbst keine Ocean-Seeds verwendet wurden.
 
 ## Nächster technischer Schritt
 
-Als nächstes wird erstmals ein **zusammengesetzter hierarchischer Datensatz**
-gebaut:
+Der hierarchische Composite-Pfad ist inzwischen mit Phase 1C nachgewiesen.
+Das veröffentlichte Artefakt basiert jedoch noch auf V1.
 
-1. grobe Nordsee-/Europa-Basis als Parent,
-2. westliche Niederlande als ungefähr 12-m-Refinement,
-3. Fine-Workarea mit Halo rechnen,
-4. nur den inneren Fine-Core in die Base übernehmen,
-5. gemeinsame Rasterpyramide erzeugen,
-6. ein einziges PMTiles-Archiv für MapLibre ausgeben.
+Als nächstes:
 
-Damit testen wir nicht mehr den Flood-Algorithmus, sondern den vollständigen
-Produktionsweg Base + Refinement → ein Client-Datensatz.
+1. Phase 1C mit dem V2-Klassenschema 0–70 m neu bauen,
+2. Seam-QA und PMTiles-Größe erneut messen,
+3. den V2-Composite visuell in MapLibre prüfen,
+4. Z11/Z12/Z13 mit V2 neu vergleichen,
+5. daraus die Produktionsauflösung für größere Regionen ableiten.
+
+Gerade Schritt 4 ist wichtig: Die frühere 1-m-Quantisierung konnte kleine
+Unterschiede zwischen DEM-Auflösungen verdecken. Die bisherige Z12-Empfehlung
+bleibt eine starke Arbeitshypothese, wird aber erst nach dem V2-Rebenchmark zur
+endgültigen Produktionsentscheidung.

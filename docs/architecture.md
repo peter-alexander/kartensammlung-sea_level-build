@@ -21,7 +21,7 @@ Beispiel:
 - reale Höhe der Zelle: -4 m
 - niedrigster Weg zum Meer führt über eine 5,84-m-Barriere
 - exakter Inundation Threshold: 5,84 m
-- bei einem Slider mit 1-m-Schritten gespeicherte Klasse: 6 m
+- im V2-Klassenschema gespeicherte Klasse: 6 m
 
 Das verhindert das fachlich falsche Bathtub-Verhalten `Geländehöhe <= Meeresspiegel`.
 
@@ -46,42 +46,56 @@ Für die Produktionsberechnung wird zunächst 4er-Nachbarschaft verwendet.
 Der Rotterdam/Zeeland-Test zeigte, dass 8er-Nachbarschaft Wasser diagonal durch
 Pixelecken gelangen lässt und Barrieren deutlich leichter überwindet.
 
-### 3. Maximaler Modellpegel zunächst +100 m
+### 3. Maximaler Modellpegel +70 m
 
-Der aktuelle Slider reicht von 0 bis 100 m.
+Der Modellbereich endet bei +70 m. Das deckt den physikalisch interessanten
+Extrembereich bis ungefähr zum vollständigen Abschmelzen des heutigen Landeises
+ab; höhere Werte wären für den Meeresspiegel-Layer nur noch abstrakte
+Topographieexperimente.
 
-Zellen, deren Inundation Threshold über 100 m liegt, müssen für V1 nicht exakt
-gespeichert werden. Sie erhalten einen gemeinsamen Sentinelwert.
+Zellen, deren Inundation Threshold über 70 m liegt, müssen nicht exakt gespeichert
+werden. Sie erhalten einen gemeinsamen Sentinelwert.
 
 Dadurch können:
 
-- Berechnung und Ausgabe auf den tatsächlich relevanten Höhenbereich begrenzt werden,
+- Berechnung und Ausgabe auf den fachlich relevanten Höhenbereich begrenzt werden,
 - hochliegende Binnengebiete aus der Ausgabe entfallen,
-- die Rasterdaten wesentlich stärker komprimieren.
+- die Rasterdaten stärker komprimieren.
 
-### 4. Quantisierung auf Slider-Schritte
+### 4. Nichtlineare Quantisierung auf Slider-Schritte
 
-V1 verwendet 1-m-Schritte.
+V2 verwendet dieselben fachlichen Stufen im Datensatz und im Slider:
 
-Der exakte Threshold wird für die Ausgabe auf den ersten sichtbaren Sliderwert
-aufgerundet:
+- 0–2 m: 0,1-m-Schritte,
+- >2–5 m: 0,25-m-Schritte,
+- >5–20 m: 1-m-Schritte,
+- >20–70 m: 5-m-Schritte.
 
-`stored_threshold = ceil(exact_threshold)`
+Der exakte Threshold wird immer auf die erste vorhandene Klasse aufgerundet. Eine
+Barriere wird dadurch nie zu früh als überflutet dargestellt.
 
-Aus 5,84375 m wird also 6 m.
+Beispiele:
 
-Erforderliche Klassen:
+- 0,03 m → 0,1 m,
+- 2,12 m → 2,25 m,
+- 5,10 m → 6 m,
+- 21 m → 25 m,
+- >70 m → Sentinel.
 
-- 0 bis 100
-- Sentinel für >100 / außerhalb des Modellbereichs
+Das Schema enthält 58 reguläre Klassen plus Sentinel. Intern werden die Klassen
+als kompakte `uint8`-Indizes gespeichert; beim Terrarium-Export werden sie wieder
+in reale Meterwerte übersetzt.
 
-Die interne Berechnung darf weiterhin mit höherer Genauigkeit arbeiten.
+Die numerische Klassenauflösung ist ausdrücklich nicht mit der tatsächlichen
+vertikalen oder räumlichen Genauigkeit des zugrunde liegenden DEM gleichzusetzen.
+Hochauflösende regionale DTM können die feinen Klassen besser stützen als die
+globale Basis.
 
 ## Eingabedaten
 
 ### DEM
 
-#### Produktionsbasis V1
+#### Produktionsbasis V2
 
 Bevorzugte Basis ist ein konsistenter globaler DEM mit ungefähr 30 m nativer
 Auflösung.
@@ -93,7 +107,7 @@ Mapterhorn ist für die Kartensammlung besonders attraktiv, weil:
 - PMTiles-Downloads und Gebietsextrakte unterstützt werden,
 - zahlreiche Regionen zusätzlich höher aufgelöste offene DEMs besitzen.
 
-Für die globale V1 sollte dennoch bewusst nur eine klar definierte Basisauflösung
+Für die globale V2 sollte dennoch bewusst nur eine klar definierte Basisauflösung
 verwendet werden. Hochauflösende regionale Verfeinerungen kommen als eigener
 zweiter Schritt.
 
@@ -141,7 +155,7 @@ konsistent bleiben.
 
 Der Produktionsdatensatz benötigt ein explizit dokumentiertes vertikales Datum.
 
-Ziel für V1: EGM2008 / orthometrische Höhe, sofern die verwendete DEM-Basis dies
+Ziel für V2: EGM2008 / orthometrische Höhe, sofern die verwendete DEM-Basis dies
 durchgehend unterstützt.
 
 Für jede Quelle werden gespeichert:
@@ -199,10 +213,10 @@ Von mehreren Wegen wird der kleinste resultierende Schwellenwert verwendet.
 
 ### Höhenlimit
 
-Für V1 interessiert nur der Bereich bis +100 m.
+Für V2 interessiert nur der Bereich bis +70 m.
 
 Zellen deutlich oberhalb dieses Grenzwerts können als Barrieren behandelt werden.
-Ein Weg, der über >100 m führen müsste, kann innerhalb des aktuellen Sliders ohnehin
+Ein Weg, der über >70 m führen müsste, kann innerhalb des aktuellen Sliders ohnehin
 nie relevant werden.
 
 ### Arbeitsraster
@@ -281,7 +295,7 @@ Der konkrete globale Maxzoom wird nach einem größeren Pilotbuild festgelegt.
 
 ### Leere Tiles
 
-Tiles ohne Zellen mit Threshold <= 100 m werden nach Möglichkeit nicht gespeichert.
+Tiles ohne Zellen mit Threshold <= 70 m werden nach Möglichkeit nicht gespeichert.
 
 Damit konzentriert sich das Archiv auf Küsten- und niedrig liegende,
 meerrelevante Gebiete.
@@ -290,7 +304,7 @@ meerrelevante Gebiete.
 
 Für die PMTiles-Pyramide muss eine definierte Downsampling-Regel festgelegt werden.
 
-V1-Vorschlag:
+V2-Vorschlag:
 
 - hohe Zooms: echte Thresholdwerte,
 - niedrigere Zooms: konservative Aggregation mit Minimum bzw. einer eigens getesteten
@@ -325,7 +339,7 @@ Mindestens:
 - created_at
 - threshold_min
 - threshold_max
-- threshold_step
+- threshold_bands / threshold_levels
 - sentinel_value
 - connectivity
 - DEM-Quelle
@@ -446,8 +460,8 @@ Ziele:
 
 - OSM-Ocean-Maske statt Natural Earth,
 - native DEM-Auflösung,
-- vollständiger Threshold 0–100 m,
-- Quantisierung auf 1 m,
+- vollständiger Threshold 0–70 m,
+- nichtlineare V2-Quantisierung,
 - PMTiles-Pyramide,
 - echte Dateigröße und Laufzeit messen,
 - niedrige Zoomstufen beurteilen.
