@@ -9,7 +9,13 @@ import numpy as np
 from shapely.geometry import shape
 from shapely import contains_xy
 
-from threshold_levels import LEVELS_M, SENTINEL_CLASS, threshold_config
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	THRESHOLD_BANDS,
+	format_level,
+	threshold_config,
+)
 
 
 WEB_MERCATOR_RADIUS = 6378137.0
@@ -144,6 +150,124 @@ def add_metrics(state, fine_values, base_values, mask):
 	state["gt1"] += int(np.count_nonzero(abs_diff > 1.0))
 	state["gt2"] += int(np.count_nonzero(abs_diff > 2.0))
 	state["gt5"] += int(np.count_nonzero(abs_diff > 5.0))
+
+
+def slider_disagreement_state():
+	return {
+		"count": 0,
+		"delta": np.zeros(SENTINEL_CLASS + 1, dtype=np.int64),
+	}
+
+
+def add_slider_disagreement(state, fine_values, base_values, mask):
+	if not np.any(mask):
+		return
+
+	fine_classes = fine_values[mask].astype(np.int16)
+	base_classes = base_values[mask].astype(np.int16)
+
+	if (
+		np.any(fine_classes > SENTINEL_CLASS)
+		or np.any(base_classes > SENTINEL_CLASS)
+	):
+		raise ValueError("Ungültige Threshold-Klasse in Seam-QA.")
+
+	state["count"] += int(fine_classes.size)
+
+	different = fine_classes != base_classes
+	if not np.any(different):
+		return
+
+	low = np.minimum(
+		fine_classes[different],
+		base_classes[different],
+	)
+	high = np.maximum(
+		fine_classes[different],
+		base_classes[different],
+	)
+
+	starts = np.bincount(
+		low,
+		minlength=SENTINEL_CLASS + 1,
+	)
+	ends = np.bincount(
+		high,
+		minlength=SENTINEL_CLASS + 1,
+	)
+	state["delta"] += starts - ends
+
+
+def finish_slider_disagreement(state):
+	count = state["count"]
+	disagreement = np.cumsum(state["delta"])[:SENTINEL_CLASS]
+
+	by_level = {}
+	for class_index, level_m in enumerate(LEVELS_M):
+		different_cells = int(disagreement[class_index])
+		by_level[format_level(level_m)] = {
+			"different_cells": different_cells,
+			"different_pct": (
+				round(100.0 * different_cells / count, 6)
+				if count
+				else None
+			),
+		}
+
+	bands = {}
+	for band_index, band in enumerate(THRESHOLD_BANDS):
+		min_m = float(band["min_m"])
+		max_m = float(band["max_m"])
+		indices = [
+			index
+			for index, level_m in enumerate(LEVELS_M)
+			if (
+				(level_m >= min_m if band_index == 0 else level_m > min_m)
+				and level_m <= max_m
+			)
+		]
+		if not indices:
+			continue
+
+		values = disagreement[indices]
+		local_index = int(np.argmax(values))
+		class_index = indices[local_index]
+		different_cells = int(values[local_index])
+		name = f"{format_level(min_m)}-{format_level(max_m)}m"
+		bands[name] = {
+			"max_different_cells": different_cells,
+			"max_different_pct": (
+				round(100.0 * different_cells / count, 6)
+				if count
+				else None
+			),
+			"at_level_m": LEVELS_M[class_index],
+		}
+
+	if count:
+		max_class = int(np.argmax(disagreement))
+		max_cells = int(disagreement[max_class])
+		maximum = {
+			"different_cells": max_cells,
+			"different_pct": round(
+				100.0 * max_cells / count,
+				6,
+			),
+			"at_level_m": LEVELS_M[max_class],
+		}
+	else:
+		maximum = {
+			"different_cells": 0,
+			"different_pct": None,
+			"at_level_m": None,
+		}
+
+	return {
+		"count": count,
+		"maximum": maximum,
+		"bands": bands,
+		"by_level": by_level,
+	}
 
 
 def parent_clip_edge_mask(
@@ -417,6 +541,10 @@ def build_composite(
 	edge_metrics = metric_state()
 	source_seam_metrics = metric_state()
 	parent_clip_metrics = metric_state()
+	core_slider_disagreement = slider_disagreement_state()
+	edge_slider_disagreement = slider_disagreement_state()
+	source_seam_slider_disagreement = slider_disagreement_state()
+	parent_clip_slider_disagreement = slider_disagreement_state()
 	edge_outliers = []
 	source_seam_outliers = []
 	parent_clip_outliers = []
@@ -515,6 +643,31 @@ def build_composite(
 			parent_clip_edge,
 		)
 
+		add_slider_disagreement(
+			core_slider_disagreement,
+			fine_values,
+			base_values,
+			mask,
+		)
+		add_slider_disagreement(
+			edge_slider_disagreement,
+			fine_values,
+			base_values,
+			edge,
+		)
+		add_slider_disagreement(
+			source_seam_slider_disagreement,
+			fine_values,
+			base_values,
+			source_seam_edge,
+		)
+		add_slider_disagreement(
+			parent_clip_slider_disagreement,
+			fine_values,
+			base_values,
+			parent_clip_edge,
+		)
+
 		collect_edge_outliers(
 			edge_outliers,
 			fine_values,
@@ -599,6 +752,21 @@ def build_composite(
 		),
 		"parent_clip_boundary_vs_upsampled_base": finish_metrics(
 			parent_clip_metrics
+		),
+		"core_slider_disagreement_vs_upsampled_base": (
+			finish_slider_disagreement(core_slider_disagreement)
+		),
+		"core_edge_slider_disagreement_vs_upsampled_base": (
+			finish_slider_disagreement(edge_slider_disagreement)
+		),
+		"refinement_seam_slider_disagreement_vs_upsampled_base": (
+			finish_slider_disagreement(source_seam_slider_disagreement)
+		),
+		"source_coverage_seam_slider_disagreement_vs_upsampled_base": (
+			finish_slider_disagreement(source_seam_slider_disagreement)
+		),
+		"parent_clip_slider_disagreement_vs_upsampled_base": (
+			finish_slider_disagreement(parent_clip_slider_disagreement)
 		),
 		"core_edge_top_outliers": edge_outliers,
 		"refinement_seam_top_outliers": source_seam_outliers,
