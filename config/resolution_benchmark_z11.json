@@ -1,0 +1,28 @@
+{
+	"name": "resolution-benchmark-z11-hoek-rotterdam",
+	"bounds": {
+		"west": 3.8671875,
+		"south": 51.83577752045249,
+		"east": 4.5703125,
+		"north": 52.16045455774704
+	},
+	"dem": {
+		"provider": "mapterhorn",
+		"tile_endpoint": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+		"processing_zoom": 11,
+		"tile_size": 512,
+		"encoding": "terrarium"
+	},
+	"sea_mask": {
+		"provider": "osmdata.openstreetmap.de",
+		"url": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+		"crs": "EPSG:3857"
+	},
+	"threshold": {
+		"min_m": 0,
+		"max_m": 100,
+		"step_m": 1,
+		"connectivity": 4,
+		"sentinel": 101
+	}
+}
