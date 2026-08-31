@@ -1,0 +1,56 @@
+{
+	"benchmark": "hierarchical-boundary-only-rotterdam-delft",
+	"date": "2026-08-31",
+	"parent_zoom": 11,
+	"refinement_zoom": 12,
+	"work_shape": [2048, 2048],
+	"core_shape": [1024, 1024],
+	"core_cells": 1048576,
+	"halo_pixels": 512,
+	"sea_seed_cells_actual_before_forcing_zero": 48786,
+	"sea_seed_cells_used": 0,
+	"boundary": {
+		"edge_cells": 8188,
+		"active_boundary_seeds": 8188,
+		"sentinel_boundary_cells": 0,
+		"unmapped_boundary_cells": 0,
+		"active_min": 0,
+		"active_max": 21
+	},
+	"refinement_flood": {
+		"processed_cells": 4194304,
+		"stale_entries": 91,
+		"sentinel_or_disconnected": 0,
+		"disconnected": 0
+	},
+	"comparison_to_full_z12_reference_core": {
+		"exact_equal_pct": 100.0,
+		"mean_abs_diff_m": 0.0,
+		"median_abs_diff_m": 0.0,
+		"max_abs_diff_m": 0,
+		"pct_diff_gt_1m": 0.0,
+		"pct_diff_gt_2m": 0.0,
+		"pct_diff_gt_5m": 0.0
+	},
+	"core_bounds": {
+		"west": 4.306640625,
+		"south": 51.944264879028765,
+		"east": 4.482421875,
+		"north": 52.05249047600099
+	},
+	"levels": {
+		"0": {"reference_fraction": 0.0, "refinement_fraction": 0.0},
+		"1": {"reference_fraction": 0.0, "refinement_fraction": 0.0},
+		"2": {"reference_fraction": 0.0, "refinement_fraction": 0.0},
+		"3": {"reference_fraction": 0.0, "refinement_fraction": 0.0},
+		"4": {"reference_fraction": 0.9923286437988281, "refinement_fraction": 0.9923286437988281},
+		"5": {"reference_fraction": 0.9942703247070312, "refinement_fraction": 0.9942703247070312},
+		"6": {"reference_fraction": 0.9955034255981445, "refinement_fraction": 0.9955034255981445},
+		"7": {"reference_fraction": 0.996516227722168, "refinement_fraction": 0.996516227722168},
+		"8": {"reference_fraction": 0.9976358413696289, "refinement_fraction": 0.9976358413696289},
+		"10": {"reference_fraction": 0.9988307952880859, "refinement_fraction": 0.9988307952880859},
+		"20": {"reference_fraction": 1.0, "refinement_fraction": 1.0},
+		"50": {"reference_fraction": 1.0, "refinement_fraction": 1.0},
+		"100": {"reference_fraction": 1.0, "refinement_fraction": 1.0}
+	}
+}
