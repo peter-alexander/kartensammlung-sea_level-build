@@ -119,6 +119,43 @@ jobs:
             --output-dir tmp/phase1a/qa \
             --max-level 100
 
+      - name: Build threshold raster pyramid
+        run: |
+          /usr/bin/time -v \
+            python scripts/build_threshold_pyramid.py \
+            --config config/north_sea_pilot.json \
+            --grid tmp/phase1a/grid.json \
+            --threshold tmp/phase1a/threshold.u8 \
+            --output tmp/phase1a/sea-level-threshold.mbtiles \
+            --report tmp/phase1a/pyramid-report.json \
+            --minzoom 6 \
+            --sentinel 101 \
+            2>&1 | tee tmp/phase1a/pyramid.log
+
+      - name: Install PMTiles CLI
+        run: |
+          go install github.com/protomaps/go-pmtiles@latest
+          "$(go env GOPATH)/bin/go-pmtiles" version
+
+      - name: Convert and verify PMTiles
+        run: |
+          "$(go env GOPATH)/bin/go-pmtiles" convert \
+            tmp/phase1a/sea-level-threshold.mbtiles \
+            tmp/phase1a/sea-level-threshold.pmtiles
+
+          "$(go env GOPATH)/bin/go-pmtiles" verify \
+            tmp/phase1a/sea-level-threshold.pmtiles
+
+          "$(go env GOPATH)/bin/go-pmtiles" show \
+            tmp/phase1a/sea-level-threshold.pmtiles \
+            --header-json \
+            > tmp/phase1a/pmtiles-header.json
+
+          "$(go env GOPATH)/bin/go-pmtiles" show \
+            tmp/phase1a/sea-level-threshold.pmtiles \
+            --metadata \
+            > tmp/phase1a/pmtiles-metadata.json
+
       - name: Show sizes
         run: |
           du -h \
@@ -127,7 +164,11 @@ jobs:
             tmp/phase1a/sea_mask.u8 \
             tmp/phase1a/threshold.u8 \
             tmp/phase1a/qa/threshold.tif \
-            tmp/phase1a/qa/report.json
+            tmp/phase1a/qa/report.json \
+            tmp/phase1a/sea-level-threshold.mbtiles \
+            tmp/phase1a/sea-level-threshold.pmtiles \
+            tmp/phase1a/pyramid-report.json \
+            tmp/phase1a/pmtiles-header.json
 
       - name: Upload Phase 1A results
         uses: actions/upload-artifact@v4
@@ -141,5 +182,10 @@ jobs:
             tmp/phase1a/priority-flood.log
             tmp/phase1a/qa/threshold.tif
             tmp/phase1a/qa/report.json
+            tmp/phase1a/pyramid-report.json
+            tmp/phase1a/pyramid.log
+            tmp/phase1a/sea-level-threshold.pmtiles
+            tmp/phase1a/pmtiles-header.json
+            tmp/phase1a/pmtiles-metadata.json
           if-no-files-found: error
           retention-days: 14
