@@ -1,0 +1,89 @@
+{
+  "levels": [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 20, 50, 100],
+  "runs": {
+    "11": {
+      "ground_pixel_m_approx": 23.531,
+      "cells": 3145728,
+      "sample_points": {
+        "Hoek van Holland": 4,
+        "Maassluis": 3,
+        "Rotterdam center": 3,
+        "Westland polder": 3,
+        "Delft": 3,
+        "Den Haag south": 3
+      },
+      "flooded_fraction_error_vs_z13": {
+        "0": -0.00012843,
+        "1": -0.00007743,
+        "2": 0.07086543,
+        "3": 0.40917857,
+        "4": 0.00141011,
+        "5": 0.00436787,
+        "6": 0.00204962,
+        "7": 0.00145638,
+        "8": 0.00059293,
+        "10": 0.00008525,
+        "20": 0.00005782,
+        "50": -0.00000028,
+        "100": 0.0
+      }
+    },
+    "12": {
+      "ground_pixel_m_approx": 11.765,
+      "cells": 12582912,
+      "sample_points": {
+        "Hoek van Holland": 4,
+        "Maassluis": 4,
+        "Rotterdam center": 4,
+        "Westland polder": 4,
+        "Delft": 4,
+        "Den Haag south": 4
+      },
+      "flooded_fraction_error_vs_z13": {
+        "0": -0.000091,
+        "1": -0.0000415,
+        "2": -0.00014571,
+        "3": 0.00028261,
+        "4": -0.00018603,
+        "5": 0.00391543,
+        "6": 0.00000081,
+        "7": 0.00069416,
+        "8": 0.00028306,
+        "10": -0.00001337,
+        "20": 0.0000095,
+        "50": -0.00000036,
+        "100": 0.0
+      }
+    },
+    "13": {
+      "ground_pixel_m_approx": 5.883,
+      "cells": 50331648,
+      "sample_points": {
+        "Hoek van Holland": 4,
+        "Maassluis": 4,
+        "Rotterdam center": 4,
+        "Westland polder": 4,
+        "Delft": 4,
+        "Den Haag south": 4
+      }
+    }
+  },
+  "comparison_to_z13_center_sample": {
+    "z11": {
+      "valid_cells": 3145728,
+      "mean_abs_diff_m": 0.5154,
+      "median_abs_diff_m": 1.0,
+      "pct_diff_gt_1m": 0.4177,
+      "pct_diff_gt_2m": 0.1438,
+      "pct_diff_gt_5m": 0.0001
+    },
+    "z12": {
+      "valid_cells": 12582912,
+      "mean_abs_diff_m": 0.0222,
+      "median_abs_diff_m": 0.0,
+      "pct_diff_gt_1m": 0.1073,
+      "pct_diff_gt_2m": 0.0091,
+      "pct_diff_gt_5m": 0.0001
+    }
+  }
+}
