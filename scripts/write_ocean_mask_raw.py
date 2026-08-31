@@ -13,6 +13,11 @@ def main():
 	parser.add_argument("--grid", default="tmp/phase1a/grid.json")
 	parser.add_argument("--input", default="tmp/phase1a/ocean_mask.tif")
 	parser.add_argument("--output", default="tmp/phase1a/sea_mask.u8")
+	parser.add_argument(
+		"--allow-empty-sea",
+		action="store_true",
+		help="Erlaubt eine leere Ocean-Maske für reine Boundary-Refinements.",
+	)
 	args = parser.parse_args()
 
 	metadata = json.loads(Path(args.grid).read_text(encoding="utf-8"))
@@ -27,7 +32,7 @@ def main():
 
 		mask = dataset.read(1).astype(np.uint8, copy=False)
 
-	if not np.any(mask):
+	if not np.any(mask) and not args.allow_empty_sea:
 		raise RuntimeError("Ocean-Maske enthält keine Seed-Zellen.")
 
 	Path(args.output).parent.mkdir(parents=True, exist_ok=True)
