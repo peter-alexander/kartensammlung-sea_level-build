@@ -362,7 +362,7 @@ Datenpipeline dauerhaft in `kartensammlung-maplibre` zu betreiben.
 
 Arbeitstitel:
 
-`kartensammlung-sea-level-build`
+`kartensammlung-sea_level-build`
 
 Inhalt:
 
