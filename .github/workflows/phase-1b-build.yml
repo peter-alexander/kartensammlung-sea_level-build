@@ -116,8 +116,7 @@ jobs:
             --output tmp/phase1b/threshold.u8 \
             --width "$GRID_WIDTH" \
             --height "$GRID_HEIGHT" \
-            --max-level 100 \
-            --step 1 \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
             --connectivity 4 \
             2>&1 | tee tmp/phase1b/priority-flood.log
 
@@ -130,7 +129,6 @@ jobs:
             --sea-mask tmp/phase1b/sea_mask.u8 \
             --threshold tmp/phase1b/threshold.u8 \
             --output-dir tmp/phase1b/qa \
-            --max-level 100 \
             2>&1 | tee tmp/phase1b/qa.log
 
       - name: Build threshold raster pyramid
@@ -143,7 +141,6 @@ jobs:
             --output tmp/phase1b/sea-level-threshold.mbtiles \
             --report tmp/phase1b/pyramid-report.json \
             --minzoom 5 \
-            --sentinel 101 \
             2>&1 | tee tmp/phase1b/pyramid.log
 
       - name: Install PMTiles CLI

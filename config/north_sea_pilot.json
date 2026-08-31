@@ -19,11 +19,36 @@
 		"crs": "EPSG:3857"
 	},
 	"threshold": {
+		"scheme": "piecewise-v2",
 		"min_m": 0,
-		"max_m": 100,
-		"step_m": 1,
+		"max_m": 70,
+		"bands": [
+			{
+				"min_m": 0,
+				"max_m": 2,
+				"step_m": 0.1
+			},
+			{
+				"min_m": 2,
+				"max_m": 5,
+				"step_m": 0.25
+			},
+			{
+				"min_m": 5,
+				"max_m": 20,
+				"step_m": 1
+			},
+			{
+				"min_m": 20,
+				"max_m": 70,
+				"step_m": 5
+			}
+		],
+		"class_count": 58,
 		"connectivity": 4,
-		"sentinel": 101
+		"sentinel_class": 58,
+		"sentinel_m": 71,
+		"rounding": "ceil-to-next-level"
 	},
 	"output": {
 		"tile_size": 512,

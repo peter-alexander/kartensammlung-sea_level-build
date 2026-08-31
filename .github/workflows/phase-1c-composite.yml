@@ -143,8 +143,7 @@ jobs:
             --output tmp/phase1c/base/threshold.u8 \
             --width "$WIDTH" \
             --height "$HEIGHT" \
-            --max-level 100 \
-            --step 1 \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
             --connectivity 4 \
             2>&1 | tee tmp/phase1c/base/flood.log
 
@@ -221,7 +220,6 @@ jobs:
             --coarse-threshold tmp/phase1c/base/threshold.u8 \
             --fine-grid tmp/phase1c/fine/grid.json \
             --output tmp/phase1c/fine/boundary.u8 \
-            --max-level 100
 
       - name: Run Z12 refinement Priority Flood
         run: |
@@ -245,8 +243,7 @@ jobs:
             --output tmp/phase1c/fine/threshold.u8 \
             --width "$WIDTH" \
             --height "$HEIGHT" \
-            --max-level 100 \
-            --step 1 \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
             --connectivity 4 \
             2>&1 | tee tmp/phase1c/fine/flood.log
 
@@ -273,7 +270,6 @@ jobs:
             --output tmp/phase1c/composite.mbtiles \
             --report tmp/phase1c/pyramid-report.json \
             --minzoom 6 \
-            --sentinel 101 \
             2>&1 | tee tmp/phase1c/pyramid.log
 
       - name: Install PMTiles CLI
