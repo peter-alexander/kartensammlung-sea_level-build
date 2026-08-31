@@ -1,0 +1,33 @@
+{
+	"name": "north-sea-v1-pilot",
+	"bounds": {
+		"west": 1.5,
+		"south": 50.5,
+		"east": 9.5,
+		"north": 55.5
+	},
+	"dem": {
+		"provider": "mapterhorn",
+		"pmtiles": "https://download.mapterhorn.com/planet.pmtiles",
+		"processing_zoom": 11,
+		"tile_size": 512,
+		"encoding": "terrarium"
+	},
+	"sea_mask": {
+		"provider": "osmdata.openstreetmap.de",
+		"url": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+		"crs": "EPSG:3857"
+	},
+	"threshold": {
+		"min_m": 0,
+		"max_m": 100,
+		"step_m": 1,
+		"connectivity": 4,
+		"sentinel": 101
+	},
+	"output": {
+		"tile_size": 512,
+		"encoding": "terrarium",
+		"archive": "pmtiles"
+	}
+}
