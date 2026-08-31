@@ -65,6 +65,11 @@ def main():
 				f"{key}: expected={value} actual={grid[key]}"
 			)
 
+	# Die mathematisch exakten West-/Nordgrenzen dürfen trotz
+	# Floating-Point-Rücktransformation keine Nachbartile einbeziehen.
+	if grid["x_min"] != 2098 or grid["y_min"] != 1353:
+		raise AssertionError(grid)
+
 	print("ok")
 
 
