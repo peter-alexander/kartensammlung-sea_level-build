@@ -6,7 +6,7 @@ on:
 jobs:
   western-netherlands-composite:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -42,6 +42,8 @@ jobs:
 
           python - <<'PY'
           import json
+          import math
+          import os
           from pathlib import Path
 
           plan = json.loads(
@@ -53,9 +55,38 @@ jobs:
               if item["source"] == "nlahn5lowresfilled"
           ]
           assert len(ahn) == 1, ahn
-          assert ahn[0]["automatic_tier"] == 2
-          assert ahn[0]["recommended_processing_zoom"] == 12
-          print(json.dumps(ahn[0], indent=2))
+          item = ahn[0]
+          assert item["automatic_tier"] == 2
+          assert item["recommended_processing_zoom"] == 13
+
+          fine_zoom = int(item["recommended_processing_zoom"])
+          world = 2.0 * math.pi * 6378137.0
+          z12_pixel = world / ((2 ** 12) * 512)
+
+          transition_buffer_projected_m = 128 * z12_pixel
+          halo_projected_m = 512 * z12_pixel
+
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"FINE_ZOOM={fine_zoom}\n")
+              env.write(
+                  "TRANSITION_BUFFER_PROJECTED_M="
+                  f"{transition_buffer_projected_m:.12f}\n"
+              )
+              env.write(
+                  "HALO_PROJECTED_M="
+                  f"{halo_projected_m:.12f}\n"
+              )
+
+          print(json.dumps(item, indent=2))
+          print(
+              "Physical refinement buffers:",
+              {
+                  "transition_buffer_projected_m": (
+                      transition_buffer_projected_m
+                  ),
+                  "halo_projected_m": halo_projected_m,
+              },
+          )
           PY
 
       - name: Download OSM ocean polygons
@@ -147,19 +178,107 @@ jobs:
             --connectivity 4 \
             2>&1 | tee tmp/phase1c/base/flood.log
 
-      - name: Prepare automatic AHN Z12 refinement region
+      - name: Prepare automatic AHN refinement region
         run: |
           python scripts/prepare_refinement_region.py \
             --sources-geojson tmp/phase1c/coverage/sources-context.geojson \
             --source nlahn5lowresfilled \
             --parent-grid tmp/phase1c/base/grid.json \
-            --fine-zoom 12 \
-            --halo-tiles 1 \
-            --transition-buffer-pixels 128 \
+            --fine-zoom "$FINE_ZOOM" \
+            --halo-projected-m "$HALO_PROJECTED_M" \
+            --transition-buffer-projected-m "$TRANSITION_BUFFER_PROJECTED_M" \
             --output-config tmp/phase1c/refinement-config.json \
             --output-core tmp/phase1c/refinement-core.geojson
 
-      - name: Prepare Z12 refinement DEM
+      - name: Preflight refinement resources
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          report = json.loads(
+              Path("tmp/phase1c/refinement-config.report.json").read_text()
+          )
+          config = json.loads(
+              Path("tmp/phase1c/refinement-config.json").read_text()
+          )
+          base = json.loads(
+              Path("tmp/phase1c/base/grid.json").read_text()
+          )["grid"]
+
+          tile_size = int(config["dem"]["tile_size"])
+          fine_zoom = int(config["dem"]["processing_zoom"])
+          parent_zoom = int(report["parent_zoom"])
+          fine_cells = int(report["work_tile_count"]) * tile_size * tile_size
+
+          factor = 2 ** (fine_zoom - parent_zoom)
+          composite_cells = int(base["cells"]) * factor * factor
+
+          # Gemessen am optimierten 50.331.648-Zellen-Z13-Benchmark.
+          flood_bytes_per_cell = (282364 * 1024) / 50331648
+          estimated_flood_ram = fine_cells * flood_bytes_per_cell
+
+          # elevation.f32 + sea_mask.u8 + boundary.u8 + threshold.u8.
+          estimated_fine_raw_disk = fine_cells * 7
+          estimated_composite_disk = composite_cells
+
+          mem_total = 0
+          for line in Path("/proc/meminfo").read_text().splitlines():
+              if line.startswith("MemTotal:"):
+                  mem_total = int(line.split()[1]) * 1024
+                  break
+
+          free_disk = shutil.disk_usage(".").free
+          gib = 1024 ** 3
+
+          summary = {
+              "fine_zoom": fine_zoom,
+              "work_tiles": report["work_tile_count"],
+              "fine_cells": fine_cells,
+              "composite_cells": composite_cells,
+              "estimated_flood_ram_gib": round(
+                  estimated_flood_ram / gib,
+                  3,
+              ),
+              "estimated_fine_raw_disk_gib": round(
+                  estimated_fine_raw_disk / gib,
+                  3,
+              ),
+              "estimated_composite_disk_gib": round(
+                  estimated_composite_disk / gib,
+                  3,
+              ),
+              "runner_ram_gib": round(mem_total / gib, 3),
+              "runner_free_disk_gib": round(free_disk / gib, 3),
+          }
+          print(json.dumps(summary, indent=2))
+
+          if fine_cells >= 2 ** 32:
+              raise RuntimeError(
+                  "Fine-Raster überschreitet die uint32-Zellgrenze."
+              )
+
+          if mem_total and estimated_flood_ram * 1.5 > mem_total:
+              raise RuntimeError(
+                  "Preflight: zu wenig Runner-RAM für den Fine-Flood."
+              )
+
+          required_disk = (
+              estimated_fine_raw_disk
+              + estimated_composite_disk
+              + 2 * gib
+          )
+          if required_disk > free_disk:
+              raise RuntimeError(
+                  "Preflight: zu wenig freier Runner-Speicherplatz."
+              )
+          PY
+
+          df -h .
+
+      - name: Prepare refinement DEM
         run: |
           mkdir -p tmp/phase1c/fine
           /usr/bin/time -v \
@@ -221,7 +340,7 @@ jobs:
             --fine-grid tmp/phase1c/fine/grid.json \
             --output tmp/phase1c/fine/boundary.u8
 
-      - name: Run Z12 refinement Priority Flood
+      - name: Run refinement Priority Flood
         run: |
           eval "$(
             python - tmp/phase1c/fine/grid.json <<'PY'
