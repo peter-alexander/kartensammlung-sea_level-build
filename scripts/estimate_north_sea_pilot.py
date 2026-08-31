@@ -75,7 +75,7 @@ def main():
 			"with_int32_work_array": round(bytes_with_work / (1024 ** 3), 2),
 		},
 		"mapterhorn_extract_command": (
-			"pmtiles extract "
+			"go-pmtiles extract "
 			f"--bbox={bounds['west']},{bounds['south']},{bounds['east']},{bounds['north']} "
 			f"--maxzoom={zoom} --overfetch=0 "
 			f"{dem['pmtiles']} north-sea-dem.pmtiles"
