@@ -135,7 +135,7 @@ jobs:
           name: phase-1a-western-netherlands
           path: |
             tmp/phase1a/grid.json
-            tmp/phase1a/sea_mask.u8.report.json
+            tmp/phase1a/sea_mask.report.json
             tmp/phase1a/ocean_mask.tif
             tmp/phase1a/threshold.u8
             tmp/phase1a/priority-flood.log
