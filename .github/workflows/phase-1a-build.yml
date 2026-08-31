@@ -27,16 +27,16 @@ jobs:
       - name: Build quantized Priority Flood
         run: |
           mkdir -p build
-          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
-            src/priority_flood_quantized.cpp \
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic
+            src/priority_flood_quantized.cpp
             -o build/priority_flood_quantized
 
       - name: Prepare Mapterhorn DEM
         run: |
-          python scripts/prepare_phase1a_dem.py \
-            --config config/north_sea_pilot.json \
-            --cache-dir cache \
-            --work-dir tmp/phase1a \
+          python scripts/prepare_phase1a_dem.py
+            --config config/north_sea_pilot.json
+            --cache-dir cache
+            --work-dir tmp/phase1a
             --workers 8
 
       - name: Export grid variables
@@ -55,78 +55,78 @@ jobs:
       - name: Download OSM ocean polygons
         run: |
           mkdir -p cache
-          curl -fL --retry 3 --retry-delay 5 \
-            -o cache/water-polygons-split-3857.zip \
+          curl -fL --retry 3 --retry-delay 5
+            -o cache/water-polygons-split-3857.zip
             https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
 
       - name: Extract and clip OSM ocean polygons
         run: |
           rm -rf tmp/ocean-source
           mkdir -p tmp/ocean-source
-          unzip -j cache/water-polygons-split-3857.zip \
-            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+          unzip -j cache/water-polygons-split-3857.zip
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg'
             -d tmp/ocean-source
 
           SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
           test -n "$SHP"
 
-          ogr2ogr \
-            -f GPKG \
-            tmp/phase1a/ocean_clip.gpkg \
-            "$SHP" \
-            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
+          ogr2ogr
+            -f GPKG
+            tmp/phase1a/ocean_clip.gpkg
+            "$SHP"
+            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
             -spat_srs EPSG:3857
 
       - name: Rasterize ocean mask
         run: |
-          gdal_rasterize \
-            -burn 1 \
-            -init 0 \
-            -ot Byte \
-            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
-            -ts "$GRID_WIDTH" "$GRID_HEIGHT" \
-            -co COMPRESS=DEFLATE \
-            -co TILED=YES \
-            tmp/phase1a/ocean_clip.gpkg \
+          gdal_rasterize
+            -burn 1
+            -init 0
+            -ot Byte
+            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
+            -ts "$GRID_WIDTH" "$GRID_HEIGHT"
+            -co COMPRESS=DEFLATE
+            -co TILED=YES
+            tmp/phase1a/ocean_clip.gpkg
             tmp/phase1a/ocean_mask.tif
 
-          python scripts/write_ocean_mask_raw.py \
-            --grid tmp/phase1a/grid.json \
-            --input tmp/phase1a/ocean_mask.tif \
+          python scripts/write_ocean_mask_raw.py
+            --grid tmp/phase1a/grid.json
+            --input tmp/phase1a/ocean_mask.tif
             --output tmp/phase1a/sea_mask.u8
 
       - name: Run quantized Priority Flood
         run: |
-          /usr/bin/time -v \
-            build/priority_flood_quantized \
-            --elevation tmp/phase1a/elevation.f32 \
-            --sea-mask tmp/phase1a/sea_mask.u8 \
-            --output tmp/phase1a/threshold.u8 \
-            --width "$GRID_WIDTH" \
-            --height "$GRID_HEIGHT" \
-            --levels "$(python scripts/threshold_levels.py --csv)" \
-            --connectivity 4 \
+          /usr/bin/time -v
+            build/priority_flood_quantized
+            --elevation tmp/phase1a/elevation.f32
+            --sea-mask tmp/phase1a/sea_mask.u8
+            --output tmp/phase1a/threshold.u8
+            --width "$GRID_WIDTH"
+            --height "$GRID_HEIGHT"
+            --levels "$(python scripts/threshold_levels.py --csv)"
+            --connectivity 4
             2>&1 | tee tmp/phase1a/priority-flood.log
 
       - name: Generate QA
         run: |
-          python scripts/phase1a_qa.py \
-            --grid tmp/phase1a/grid.json \
-            --elevation tmp/phase1a/elevation.f32 \
-            --sea-mask tmp/phase1a/sea_mask.u8 \
-            --threshold tmp/phase1a/threshold.u8 \
-            --output-dir tmp/phase1a/qa \
+          python scripts/phase1a_qa.py
+            --grid tmp/phase1a/grid.json
+            --elevation tmp/phase1a/elevation.f32
+            --sea-mask tmp/phase1a/sea_mask.u8
+            --threshold tmp/phase1a/threshold.u8
+            --output-dir tmp/phase1a/qa
 
       - name: Build threshold raster pyramid
         run: |
-          /usr/bin/time -v \
-            python scripts/build_threshold_pyramid.py \
-            --config config/north_sea_pilot.json \
-            --grid tmp/phase1a/grid.json \
-            --threshold tmp/phase1a/threshold.u8 \
-            --output tmp/phase1a/sea-level-threshold.mbtiles \
-            --report tmp/phase1a/pyramid-report.json \
-            --minzoom 6 \
+          /usr/bin/time -v
+            python scripts/build_threshold_pyramid.py
+            --config config/north_sea_pilot.json
+            --grid tmp/phase1a/grid.json
+            --threshold tmp/phase1a/threshold.u8
+            --output tmp/phase1a/sea-level-threshold.mbtiles
+            --report tmp/phase1a/pyramid-report.json
+            --minzoom 6
             2>&1 | tee tmp/phase1a/pyramid.log
 
       - name: Install PMTiles CLI
@@ -136,35 +136,35 @@ jobs:
 
       - name: Convert and verify PMTiles
         run: |
-          "$(go env GOPATH)/bin/go-pmtiles" convert \
-            tmp/phase1a/sea-level-threshold.mbtiles \
+          "$(go env GOPATH)/bin/go-pmtiles" convert
+            tmp/phase1a/sea-level-threshold.mbtiles
             tmp/phase1a/sea-level-threshold.pmtiles
 
-          "$(go env GOPATH)/bin/go-pmtiles" verify \
+          "$(go env GOPATH)/bin/go-pmtiles" verify
             tmp/phase1a/sea-level-threshold.pmtiles
 
-          "$(go env GOPATH)/bin/go-pmtiles" show \
-            tmp/phase1a/sea-level-threshold.pmtiles \
-            --header-json \
+          "$(go env GOPATH)/bin/go-pmtiles" show
+            tmp/phase1a/sea-level-threshold.pmtiles
+            --header-json
             > tmp/phase1a/pmtiles-header.json
 
-          "$(go env GOPATH)/bin/go-pmtiles" show \
-            tmp/phase1a/sea-level-threshold.pmtiles \
-            --metadata \
+          "$(go env GOPATH)/bin/go-pmtiles" show
+            tmp/phase1a/sea-level-threshold.pmtiles
+            --metadata
             > tmp/phase1a/pmtiles-metadata.json
 
       - name: Show sizes
         run: |
-          du -h \
-            tmp/phase1a/grid.json \
-            tmp/phase1a/ocean_mask.tif \
-            tmp/phase1a/sea_mask.u8 \
-            tmp/phase1a/threshold.u8 \
-            tmp/phase1a/qa/threshold.tif \
-            tmp/phase1a/qa/report.json \
-            tmp/phase1a/sea-level-threshold.mbtiles \
-            tmp/phase1a/sea-level-threshold.pmtiles \
-            tmp/phase1a/pyramid-report.json \
+          du -h
+            tmp/phase1a/grid.json
+            tmp/phase1a/ocean_mask.tif
+            tmp/phase1a/sea_mask.u8
+            tmp/phase1a/threshold.u8
+            tmp/phase1a/qa/threshold.tif
+            tmp/phase1a/qa/report.json
+            tmp/phase1a/sea-level-threshold.mbtiles
+            tmp/phase1a/sea-level-threshold.pmtiles
+            tmp/phase1a/pyramid-report.json
             tmp/phase1a/pmtiles-header.json
 
       - name: Upload Phase 1A results
