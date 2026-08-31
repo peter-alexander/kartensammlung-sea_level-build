@@ -421,30 +421,43 @@ def plan(
 		)
 
 		centroid_lat = geometry.representative_point().y
-		target_resolution = None
-		if tier["tier3_candidate"]:
-			target_resolution = tier3_target_ground_resolution_m
-		elif tier["automatic_tier"] == 2:
-			target_resolution = tier2_target_ground_resolution_m
 
-		recommended_processing_zoom = None
-		recommended_ground = None
-		if target_resolution is not None:
-			recommended_processing_zoom = recommended_zoom(
+		automatic_processing_zoom = None
+		automatic_ground = None
+		if tier["automatic_tier"] == 2:
+			automatic_processing_zoom = recommended_zoom(
 				centroid_lat,
-				target_resolution,
+				tier2_target_ground_resolution_m,
 			)
-			recommended_ground = ground_resolution(
+			automatic_ground = ground_resolution(
 				centroid_lat,
-				recommended_processing_zoom,
+				automatic_processing_zoom,
+			)
+
+		tier3_processing_zoom = None
+		tier3_ground = None
+		if tier["tier3_candidate"]:
+			tier3_processing_zoom = recommended_zoom(
+				centroid_lat,
+				tier3_target_ground_resolution_m,
+			)
+			tier3_ground = ground_resolution(
+				centroid_lat,
+				tier3_processing_zoom,
 			)
 
 		planning = {
 			**tier,
-			"recommended_processing_zoom": recommended_processing_zoom,
+			"recommended_processing_zoom": automatic_processing_zoom,
 			"recommended_ground_resolution_m": (
-				round(recommended_ground, 3)
-				if recommended_ground is not None
+				round(automatic_ground, 3)
+				if automatic_ground is not None
+				else None
+			),
+			"tier3_candidate_processing_zoom": tier3_processing_zoom,
+			"tier3_candidate_ground_resolution_m": (
+				round(tier3_ground, 3)
+				if tier3_ground is not None
 				else None
 			),
 		}
@@ -490,7 +503,7 @@ def plan(
 	archives = intersecting_archives(download_data, bounds)
 
 	result = {
-		"schema_version": 1,
+		"schema_version": 2,
 		"generated_at": datetime.now(timezone.utc).isoformat(),
 		"bounds": list(bounds),
 		"coverage": {
@@ -549,6 +562,10 @@ def plan(
 			"has_coverage": tier3_union is not None,
 		},
 		"high_resolution_archives": {
+			"purpose": (
+				"informational for z13+ / Tier-3 QA; "
+				"automatic Tier 2 uses Mapterhorn z0-z12"
+			),
 			"count": len(archives),
 			"total_bytes": sum(int(item.get("size", 0)) for item in archives),
 			"items": archives,
