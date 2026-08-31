@@ -1,0 +1,51 @@
+name: Temporary Phase 1B estimate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-phase1b-estimate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  estimate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Estimate raster
+        run: |
+          python scripts/estimate_north_sea_pilot.py \
+            --config config/north_sea_phase1b.json
+
+      - name: Install PMTiles CLI
+        run: |
+          go install github.com/protomaps/go-pmtiles@latest
+          "$(go env GOPATH)/bin/go-pmtiles" --help >/dev/null
+
+      - name: Mapterhorn extract dry run
+        run: |
+          "$(go env GOPATH)/bin/go-pmtiles" extract \
+            --bbox=-2.5,49.5,13.0,58.0 \
+            --maxzoom=10 \
+            --overfetch=0 \
+            --dry-run \
+            https://download.mapterhorn.com/planet.pmtiles \
+            phase1b-dem.pmtiles
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-phase1b-estimate.yml
+          git commit -m "Remove temporary Phase 1B estimate workflow"
+          git push
