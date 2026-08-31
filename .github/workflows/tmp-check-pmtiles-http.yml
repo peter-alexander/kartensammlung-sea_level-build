@@ -1,0 +1,46 @@
+name: Temporary check PMTiles HTTP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-check-pmtiles-http.yml
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check raw GitHub range and CORS
+        run: |
+          URL="https://raw.githubusercontent.com/peter-alexander/kartensammlung-sea_level-build/main/output/phase1a/sea-level-threshold.pmtiles"
+          curl -fsSI "$URL"
+          echo "--- range ---"
+          curl -fsS -D - \
+            -H 'Range: bytes=0-126' \
+            -o /tmp/header.bin \
+            "$URL"
+          test "$(wc -c < /tmp/header.bin)" -eq 127
+          python - <<'PY'
+          from pathlib import Path
+          data = Path("/tmp/header.bin").read_bytes()
+          assert data[:7] == b"PMTiles"
+          print("PMTiles magic OK")
+          PY
+
+      - name: Remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-check-pmtiles-http.yml
+          git commit -m "Remove temporary PMTiles HTTP check"
+          git push
