@@ -160,10 +160,26 @@ static std::uint8_t quantizedElevationLevel(
 	return static_cast<std::uint8_t>(std::distance(levels.begin(), found));
 }
 
-static std::vector<std::uint8_t> computeThreshold(
+static std::vector<std::uint8_t> quantizeElevation(
 	const std::vector<float>& elevation,
-	const std::vector<std::uint8_t>& seaMask,
-	const std::vector<std::uint8_t>* boundaryThreshold,
+	const std::vector<double>& levels
+) {
+	std::vector<std::uint8_t> result(elevation.size());
+
+	for (std::size_t index = 0; index < elevation.size(); ++index) {
+		result[index] = quantizedElevationLevel(
+			elevation[index],
+			levels
+		);
+	}
+
+	return result;
+}
+
+static std::vector<std::uint8_t> computeThreshold(
+	const std::vector<std::uint8_t>& elevationLevel,
+	std::vector<std::uint8_t>& seaMask,
+	std::vector<std::uint8_t>* boundaryThreshold,
 	std::uint32_t width,
 	std::uint32_t height,
 	const std::vector<double>& levels,
@@ -237,10 +253,7 @@ static std::vector<std::uint8_t> computeThreshold(
 				);
 			}
 
-			const std::uint8_t cellLevel = quantizedElevationLevel(
-				elevation[index],
-				levels
-			);
+			const std::uint8_t cellLevel = elevationLevel[index];
 
 			if (cellLevel == sentinel) {
 				continue;
@@ -262,11 +275,13 @@ static std::vector<std::uint8_t> computeThreshold(
 	std::size_t processed = 0;
 	std::size_t staleEntries = 0;
 
+	std::vector<std::uint8_t>().swap(seaMask);
+	if (boundaryThreshold) {
+		std::vector<std::uint8_t>().swap(*boundaryThreshold);
+	}
+
 	auto visitNeighbor = [&](std::uint32_t neighborIndex, std::uint8_t currentLevel) {
-		const std::uint8_t cellLevel = quantizedElevationLevel(
-			elevation[neighborIndex],
-			levels
-		);
+		const std::uint8_t cellLevel = elevationLevel[neighborIndex];
 
 		if (cellLevel == sentinel) {
 			if (threshold[neighborIndex] == unvisited) {
@@ -373,17 +388,23 @@ int main(int argc, char** argv) {
 			);
 		}
 
-		const std::vector<float> elevation = readBinary<float>(
+		std::vector<float> elevation = readBinary<float>(
 			options.elevationPath,
 			cellCount
 		);
-		const std::vector<std::uint8_t> seaMask = readBinary<std::uint8_t>(
+		const std::vector<std::uint8_t> elevationLevel = quantizeElevation(
+			elevation,
+			options.levels
+		);
+		std::vector<float>().swap(elevation);
+
+		std::vector<std::uint8_t> seaMask = readBinary<std::uint8_t>(
 			options.seaMaskPath,
 			cellCount
 		);
 
 		std::vector<std::uint8_t> boundaryThreshold;
-		const std::vector<std::uint8_t>* boundaryThresholdPtr = nullptr;
+		std::vector<std::uint8_t>* boundaryThresholdPtr = nullptr;
 		if (!options.boundaryThresholdPath.empty()) {
 			boundaryThreshold = readBinary<std::uint8_t>(
 				options.boundaryThresholdPath,
@@ -393,7 +414,7 @@ int main(int argc, char** argv) {
 		}
 
 		const std::vector<std::uint8_t> threshold = computeThreshold(
-			elevation,
+			elevationLevel,
 			seaMask,
 			boundaryThresholdPtr,
 			options.width,
