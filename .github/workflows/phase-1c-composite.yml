@@ -27,17 +27,17 @@ jobs:
       - name: Build quantized Priority Flood
         run: |
           mkdir -p build tmp/phase1c
-          g++ -O3 -std=c++20 -Wall -Wextra -pedantic
-            src/priority_flood_quantized.cpp
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
             -o build/priority_flood_quantized
 
       - name: Generate Mapterhorn coverage plan
         run: |
-          python scripts/coverage_planner.py
-            --bbox=2.5,51.2,5.5,53.2
-            --output-dir tmp/phase1c/coverage
-            --coverage-zoom 8
-            --cache-dir cache
+          python scripts/coverage_planner.py \
+            --bbox=2.5,51.2,5.5,53.2 \
+            --output-dir tmp/phase1c/coverage \
+            --coverage-zoom 8 \
+            --cache-dir cache \
             --workers 12
 
           python - <<'PY'
@@ -61,23 +61,23 @@ jobs:
       - name: Download OSM ocean polygons
         run: |
           mkdir -p cache tmp/ocean-source
-          curl -fL --retry 3 --retry-delay 5
-            -o cache/water-polygons-split-3857.zip
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
             https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
 
-          unzip -j cache/water-polygons-split-3857.zip
-            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg'
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
             -d tmp/ocean-source
 
       - name: Prepare Z11 parent DEM
         run: |
           mkdir -p tmp/phase1c/base
-          /usr/bin/time -v
-            python scripts/prepare_phase1a_dem.py
-            --config config/north_sea_pilot.json
-            --cache-dir cache
-            --work-dir tmp/phase1c/base
-            --workers 12
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+            --config config/north_sea_pilot.json \
+            --cache-dir cache \
+            --work-dir tmp/phase1c/base \
+            --workers 12 \
             2>&1 | tee tmp/phase1c/base/dem.log
 
       - name: Rasterize parent ocean mask
@@ -99,27 +99,27 @@ jobs:
           PY
           )"
 
-          ogr2ogr
-            -f GPKG
-            tmp/phase1c/base/ocean_clip.gpkg
-            "$SHP"
-            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
+          ogr2ogr \
+            -f GPKG \
+            tmp/phase1c/base/ocean_clip.gpkg \
+            "$SHP" \
+            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
             -spat_srs EPSG:3857
 
-          gdal_rasterize
-            -burn 1
-            -init 0
-            -ot Byte
-            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
-            -ts "$GRID_WIDTH" "$GRID_HEIGHT"
-            -co COMPRESS=DEFLATE
-            -co TILED=YES
-            tmp/phase1c/base/ocean_clip.gpkg
+          gdal_rasterize \
+            -burn 1 \
+            -init 0 \
+            -ot Byte \
+            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
+            -ts "$GRID_WIDTH" "$GRID_HEIGHT" \
+            -co COMPRESS=DEFLATE \
+            -co TILED=YES \
+            tmp/phase1c/base/ocean_clip.gpkg \
             tmp/phase1c/base/ocean_mask.tif
 
-          python scripts/write_ocean_mask_raw.py
-            --grid tmp/phase1c/base/grid.json
-            --input tmp/phase1c/base/ocean_mask.tif
+          python scripts/write_ocean_mask_raw.py \
+            --grid tmp/phase1c/base/grid.json \
+            --input tmp/phase1c/base/ocean_mask.tif \
             --output tmp/phase1c/base/sea_mask.u8
 
       - name: Run Z11 parent Priority Flood
@@ -136,38 +136,38 @@ jobs:
           PY
           )"
 
-          /usr/bin/time -v
-            build/priority_flood_quantized
-            --elevation tmp/phase1c/base/elevation.f32
-            --sea-mask tmp/phase1c/base/sea_mask.u8
-            --output tmp/phase1c/base/threshold.u8
-            --width "$WIDTH"
-            --height "$HEIGHT"
-            --levels "$(python scripts/threshold_levels.py --csv)"
-            --connectivity 4
+          /usr/bin/time -v \
+            build/priority_flood_quantized \
+            --elevation tmp/phase1c/base/elevation.f32 \
+            --sea-mask tmp/phase1c/base/sea_mask.u8 \
+            --output tmp/phase1c/base/threshold.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
+            --connectivity 4 \
             2>&1 | tee tmp/phase1c/base/flood.log
 
       - name: Prepare automatic AHN Z12 refinement region
         run: |
-          python scripts/prepare_refinement_region.py
-            --sources-geojson tmp/phase1c/coverage/sources-context.geojson
-            --source nlahn5lowresfilled
-            --parent-grid tmp/phase1c/base/grid.json
-            --fine-zoom 12
-            --halo-tiles 1
-            --transition-buffer-pixels 128
-            --output-config tmp/phase1c/refinement-config.json
+          python scripts/prepare_refinement_region.py \
+            --sources-geojson tmp/phase1c/coverage/sources-context.geojson \
+            --source nlahn5lowresfilled \
+            --parent-grid tmp/phase1c/base/grid.json \
+            --fine-zoom 12 \
+            --halo-tiles 1 \
+            --transition-buffer-pixels 128 \
+            --output-config tmp/phase1c/refinement-config.json \
             --output-core tmp/phase1c/refinement-core.geojson
 
       - name: Prepare Z12 refinement DEM
         run: |
           mkdir -p tmp/phase1c/fine
-          /usr/bin/time -v
-            python scripts/prepare_phase1a_dem.py
-            --config tmp/phase1c/refinement-config.json
-            --cache-dir cache
-            --work-dir tmp/phase1c/fine
-            --workers 12
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+            --config tmp/phase1c/refinement-config.json \
+            --cache-dir cache \
+            --work-dir tmp/phase1c/fine \
+            --workers 12 \
             2>&1 | tee tmp/phase1c/fine/dem.log
 
       - name: Rasterize refinement ocean mask
@@ -189,36 +189,36 @@ jobs:
           PY
           )"
 
-          ogr2ogr
-            -f GPKG
-            tmp/phase1c/fine/ocean_clip.gpkg
-            "$SHP"
-            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
+          ogr2ogr \
+            -f GPKG \
+            tmp/phase1c/fine/ocean_clip.gpkg \
+            "$SHP" \
+            -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
             -spat_srs EPSG:3857
 
-          gdal_rasterize
-            -burn 1
-            -init 0
-            -ot Byte
-            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"
-            -ts "$GRID_WIDTH" "$GRID_HEIGHT"
-            -co COMPRESS=DEFLATE
-            -co TILED=YES
-            tmp/phase1c/fine/ocean_clip.gpkg
+          gdal_rasterize \
+            -burn 1 \
+            -init 0 \
+            -ot Byte \
+            -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
+            -ts "$GRID_WIDTH" "$GRID_HEIGHT" \
+            -co COMPRESS=DEFLATE \
+            -co TILED=YES \
+            tmp/phase1c/fine/ocean_clip.gpkg \
             tmp/phase1c/fine/ocean_mask.tif
 
-          python scripts/write_ocean_mask_raw.py
-            --grid tmp/phase1c/fine/grid.json
-            --input tmp/phase1c/fine/ocean_mask.tif
-            --output tmp/phase1c/fine/sea_mask.u8
+          python scripts/write_ocean_mask_raw.py \
+            --grid tmp/phase1c/fine/grid.json \
+            --input tmp/phase1c/fine/ocean_mask.tif \
+            --output tmp/phase1c/fine/sea_mask.u8 \
             --allow-empty-sea
 
       - name: Build inherited Z11 boundary
         run: |
-          python scripts/build_refinement_boundary.py
-            --coarse-grid tmp/phase1c/base/grid.json
-            --coarse-threshold tmp/phase1c/base/threshold.u8
-            --fine-grid tmp/phase1c/fine/grid.json
+          python scripts/build_refinement_boundary.py \
+            --coarse-grid tmp/phase1c/base/grid.json \
+            --coarse-threshold tmp/phase1c/base/threshold.u8 \
+            --fine-grid tmp/phase1c/fine/grid.json \
             --output tmp/phase1c/fine/boundary.u8
 
       - name: Run Z12 refinement Priority Flood
@@ -235,41 +235,41 @@ jobs:
           PY
           )"
 
-          /usr/bin/time -v
-            build/priority_flood_quantized
-            --elevation tmp/phase1c/fine/elevation.f32
-            --sea-mask tmp/phase1c/fine/sea_mask.u8
-            --boundary-threshold tmp/phase1c/fine/boundary.u8
-            --output tmp/phase1c/fine/threshold.u8
-            --width "$WIDTH"
-            --height "$HEIGHT"
-            --levels "$(python scripts/threshold_levels.py --csv)"
-            --connectivity 4
+          /usr/bin/time -v \
+            build/priority_flood_quantized \
+            --elevation tmp/phase1c/fine/elevation.f32 \
+            --sea-mask tmp/phase1c/fine/sea_mask.u8 \
+            --boundary-threshold tmp/phase1c/fine/boundary.u8 \
+            --output tmp/phase1c/fine/threshold.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
+            --connectivity 4 \
             2>&1 | tee tmp/phase1c/fine/flood.log
 
       - name: Merge Base and AHN refinement
         run: |
-          /usr/bin/time -v
-            python scripts/build_composite_threshold.py
-            --base-grid tmp/phase1c/base/grid.json
-            --base-threshold tmp/phase1c/base/threshold.u8
-            --fine-grid tmp/phase1c/fine/grid.json
-            --fine-threshold tmp/phase1c/fine/threshold.u8
-            --core-geojson tmp/phase1c/refinement-core.geojson
-            --output-dir tmp/phase1c/composite
-            --chunk-rows 128
+          /usr/bin/time -v \
+            python scripts/build_composite_threshold.py \
+            --base-grid tmp/phase1c/base/grid.json \
+            --base-threshold tmp/phase1c/base/threshold.u8 \
+            --fine-grid tmp/phase1c/fine/grid.json \
+            --fine-threshold tmp/phase1c/fine/threshold.u8 \
+            --core-geojson tmp/phase1c/refinement-core.geojson \
+            --output-dir tmp/phase1c/composite \
+            --chunk-rows 128 \
             2>&1 | tee tmp/phase1c/composite.log
 
       - name: Build composite raster pyramid
         run: |
-          /usr/bin/time -v
-            python scripts/build_threshold_pyramid.py
-            --config config/north_sea_pilot.json
-            --grid tmp/phase1c/composite/grid.json
-            --threshold tmp/phase1c/composite/threshold.u8
-            --output tmp/phase1c/composite.mbtiles
-            --report tmp/phase1c/pyramid-report.json
-            --minzoom 6
+          /usr/bin/time -v \
+            python scripts/build_threshold_pyramid.py \
+            --config config/north_sea_pilot.json \
+            --grid tmp/phase1c/composite/grid.json \
+            --threshold tmp/phase1c/composite/threshold.u8 \
+            --output tmp/phase1c/composite.mbtiles \
+            --report tmp/phase1c/pyramid-report.json \
+            --minzoom 6 \
             2>&1 | tee tmp/phase1c/pyramid.log
 
       - name: Install PMTiles CLI
@@ -278,21 +278,21 @@ jobs:
 
       - name: Convert and verify composite PMTiles
         run: |
-          "$(go env GOPATH)/bin/go-pmtiles" convert
-            tmp/phase1c/composite.mbtiles
+          "$(go env GOPATH)/bin/go-pmtiles" convert \
+            tmp/phase1c/composite.mbtiles \
             tmp/phase1c/sea-level-composite.pmtiles
 
-          "$(go env GOPATH)/bin/go-pmtiles" verify
+          "$(go env GOPATH)/bin/go-pmtiles" verify \
             tmp/phase1c/sea-level-composite.pmtiles
 
-          "$(go env GOPATH)/bin/go-pmtiles" show
-            tmp/phase1c/sea-level-composite.pmtiles
-            --header-json
+          "$(go env GOPATH)/bin/go-pmtiles" show \
+            tmp/phase1c/sea-level-composite.pmtiles \
+            --header-json \
             > tmp/phase1c/pmtiles-header.json
 
-          "$(go env GOPATH)/bin/go-pmtiles" show
-            tmp/phase1c/sea-level-composite.pmtiles
-            --metadata
+          "$(go env GOPATH)/bin/go-pmtiles" show \
+            tmp/phase1c/sea-level-composite.pmtiles \
+            --metadata \
             > tmp/phase1c/pmtiles-metadata.json
 
       - name: Show composite result
@@ -325,9 +325,9 @@ jobs:
           ))
           PY
 
-          du -h
-            tmp/phase1c/sea-level-composite.pmtiles
-            tmp/phase1c/composite/threshold.u8
+          du -h \
+            tmp/phase1c/sea-level-composite.pmtiles \
+            tmp/phase1c/composite/threshold.u8 \
             tmp/phase1c/pyramid-report.json
 
       - name: Upload Phase 1C results
