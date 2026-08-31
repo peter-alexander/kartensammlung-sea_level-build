@@ -9,6 +9,15 @@ import numpy as np
 import rasterio
 from rasterio.transform import Affine
 
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	SENTINEL_M,
+	class_for_meters,
+	format_level,
+	threshold_config,
+)
+
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -17,7 +26,6 @@ def main():
 	parser.add_argument("--sea-mask", default="tmp/phase1a/sea_mask.u8")
 	parser.add_argument("--threshold", default="tmp/phase1a/threshold.u8")
 	parser.add_argument("--output-dir", default="tmp/phase1a/qa")
-	parser.add_argument("--max-level", type=int, default=100)
 	args = parser.parse_args()
 
 	metadata = json.loads(Path(args.grid).read_text(encoding="utf-8"))
@@ -34,14 +42,15 @@ def main():
 	if threshold.size != count:
 		raise RuntimeError("Threshold-Größe stimmt nicht.")
 
-	hist = np.bincount(
-		np.asarray(threshold).reshape(-1),
-		minlength=max(args.max_level + 2, 256),
-	)
+	threshold_array = np.asarray(threshold)
+	if np.any(threshold_array > SENTINEL_CLASS):
+		raise RuntimeError("Threshold enthält ungültige Klassen.")
+
+	hist = np.bincount(threshold_array.reshape(-1), minlength=256)
 	threshold_counts = {
-		str(level): int(hist[level])
-		for level in range(args.max_level + 2)
-		if hist[level] > 0
+		format_level(LEVELS_M[class_index]): int(hist[class_index])
+		for class_index in range(SENTINEL_CLASS)
+		if hist[class_index] > 0
 	}
 
 	center_y = (grid["top"] + grid["bottom"]) / 2.0
@@ -52,9 +61,9 @@ def main():
 	cell_area = ground_pixel * ground_pixel
 
 	levels = []
-	for level in (0, 1, 2, 5, 10, 20, 50, 100):
+	for level in (0, 0.5, 1, 2, 5, 10, 20, 50, 70):
 		bathtub = np.isfinite(elevation) & (elevation <= level)
-		connected = threshold <= level
+		connected = threshold <= class_for_meters(level)
 		protected = bathtub & ~connected
 		levels.append({
 			"level_m": level,
@@ -83,7 +92,7 @@ def main():
 		width=grid["width"],
 		height=grid["height"],
 		count=1,
-		dtype="uint8",
+		dtype="float32",
 		crs="EPSG:3857",
 		transform=transform,
 		compress="deflate",
@@ -95,15 +104,18 @@ def main():
 		for row in range(0, grid["height"], 512):
 			height = min(512, grid["height"] - row)
 			window = rasterio.windows.Window(0, row, grid["width"], height)
-			dataset.write(np.asarray(threshold[row:row + height, :]), 1, window=window)
+			classes = np.asarray(threshold[row:row + height, :])
+			lookup = np.asarray((*LEVELS_M, SENTINEL_M), dtype=np.float32)
+			dataset.write(lookup[classes], 1, window=window)
 
 	report = {
 		"grid": grid,
 		"center_latitude": round(center_lat, 6),
 		"ground_pixel_m_approx": round(ground_pixel, 3),
 		"sea_seed_cells": int(np.count_nonzero(sea)),
+		"threshold": threshold_config(),
 		"threshold_counts": threshold_counts,
-		"sentinel_cells": int(hist[args.max_level + 1]),
+		"sentinel_cells": int(hist[SENTINEL_CLASS]),
 		"levels": levels,
 	}
 	(output_dir / "report.json").write_text(

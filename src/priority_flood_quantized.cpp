@@ -15,8 +15,7 @@ struct Options {
 	std::string outputPath;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
-	std::uint8_t maxLevel = 100;
-	double step = 1.0;
+	std::vector<double> levels;
 	int connectivity = 4;
 };
 
@@ -49,14 +48,23 @@ static Options parseArgs(int argc, char** argv) {
 			options.height = static_cast<std::uint32_t>(
 				std::stoul(requireValue(i, argc, argv, arg))
 			);
-		} else if (arg == "--max-level") {
-			const unsigned long value = std::stoul(requireValue(i, argc, argv, arg));
-			if (value > 253) {
-				throw std::runtime_error("--max-level muss <= 253 sein.");
+		} else if (arg == "--levels") {
+			const std::string value = requireValue(i, argc, argv, arg);
+			std::size_t start = 0;
+
+			while (start <= value.size()) {
+				const std::size_t end = value.find(',', start);
+				const std::string token = value.substr(
+					start,
+					end == std::string::npos ? std::string::npos : end - start
+				);
+				if (token.empty()) {
+					throw std::runtime_error("--levels enthält einen leeren Wert.");
+				}
+				options.levels.push_back(std::stod(token));
+				if (end == std::string::npos) break;
+				start = end + 1;
 			}
-			options.maxLevel = static_cast<std::uint8_t>(value);
-		} else if (arg == "--step") {
-			options.step = std::stod(requireValue(i, argc, argv, arg));
 		} else if (arg == "--connectivity") {
 			options.connectivity = std::stoi(requireValue(i, argc, argv, arg));
 		} else {
@@ -70,8 +78,22 @@ static Options parseArgs(int argc, char** argv) {
 	if (options.width == 0 || options.height == 0) {
 		throw std::runtime_error("--width und --height müssen > 0 sein.");
 	}
-	if (!(options.step > 0.0) || !std::isfinite(options.step)) {
-		throw std::runtime_error("--step muss eine positive endliche Zahl sein.");
+	if (options.levels.empty()) {
+		throw std::runtime_error("--levels ist erforderlich.");
+	}
+	if (options.levels.size() > 254) {
+		throw std::runtime_error("--levels darf höchstens 254 Klassen enthalten.");
+	}
+	if (std::abs(options.levels.front()) > 1e-12) {
+		throw std::runtime_error("Die erste Threshold-Klasse muss 0 m sein.");
+	}
+	for (std::size_t index = 0; index < options.levels.size(); ++index) {
+		if (!std::isfinite(options.levels[index]) || options.levels[index] < 0.0) {
+			throw std::runtime_error("--levels enthält einen ungültigen Wert.");
+		}
+		if (index > 0 && !(options.levels[index] > options.levels[index - 1])) {
+			throw std::runtime_error("--levels muss streng monoton steigen.");
+		}
 	}
 	if (options.connectivity != 4 && options.connectivity != 8) {
 		throw std::runtime_error("--connectivity muss 4 oder 8 sein.");
@@ -124,25 +146,18 @@ static void writeBinary(const std::string& path, const std::vector<T>& data) {
 
 static std::uint8_t quantizedElevationLevel(
 	float elevation,
-	std::uint8_t maxLevel,
-	double step
+	const std::vector<double>& levels
 ) {
-	const std::uint8_t sentinel = static_cast<std::uint8_t>(maxLevel + 1);
+	const std::uint8_t sentinel = static_cast<std::uint8_t>(levels.size());
 
-	if (!std::isfinite(elevation)) {
-		return sentinel;
-	}
+	if (!std::isfinite(elevation)) return sentinel;
+	if (elevation <= 0.0f) return 0;
 
-	if (elevation <= 0.0f) {
-		return 0;
-	}
+	const double value = static_cast<double>(elevation) - 1e-12;
+	const auto found = std::lower_bound(levels.begin(), levels.end(), value);
+	if (found == levels.end()) return sentinel;
 
-	const double quantized = std::ceil(static_cast<double>(elevation) / step - 1e-12);
-	if (quantized > static_cast<double>(maxLevel)) {
-		return sentinel;
-	}
-
-	return static_cast<std::uint8_t>(std::max(0.0, quantized));
+	return static_cast<std::uint8_t>(std::distance(levels.begin(), found));
 }
 
 static std::vector<std::uint8_t> computeThreshold(
@@ -151,24 +166,21 @@ static std::vector<std::uint8_t> computeThreshold(
 	const std::vector<std::uint8_t>* boundaryThreshold,
 	std::uint32_t width,
 	std::uint32_t height,
-	std::uint8_t maxLevel,
-	double step,
+	const std::vector<double>& levels,
 	int connectivity
 ) {
 	const std::size_t cellCount = static_cast<std::size_t>(width) * height;
-	const std::uint8_t sentinel = static_cast<std::uint8_t>(maxLevel + 1);
+	const std::uint8_t sentinel = static_cast<std::uint8_t>(levels.size());
 	const std::uint8_t unvisited = 255;
 
 	std::vector<std::uint8_t> threshold(cellCount, unvisited);
-	std::vector<std::vector<std::uint32_t>> buckets(
-		static_cast<std::size_t>(maxLevel) + 1
-	);
+	std::vector<std::vector<std::uint32_t>> buckets(levels.size());
 
 	std::size_t seaSeedCount = 0;
 	std::size_t boundarySeedCount = 0;
 
 	auto enqueueSeed = [&](std::uint32_t index, std::uint8_t level) {
-		if (level > maxLevel) {
+		if (level >= levels.size()) {
 			return false;
 		}
 		if (threshold[index] <= level) {
@@ -227,8 +239,7 @@ static std::vector<std::uint8_t> computeThreshold(
 
 			const std::uint8_t cellLevel = quantizedElevationLevel(
 				elevation[index],
-				maxLevel,
-				step
+				levels
 			);
 
 			if (cellLevel == sentinel) {
@@ -254,8 +265,7 @@ static std::vector<std::uint8_t> computeThreshold(
 	auto visitNeighbor = [&](std::uint32_t neighborIndex, std::uint8_t currentLevel) {
 		const std::uint8_t cellLevel = quantizedElevationLevel(
 			elevation[neighborIndex],
-			maxLevel,
-			step
+			levels
 		);
 
 		if (cellLevel == sentinel) {
@@ -274,7 +284,7 @@ static std::vector<std::uint8_t> computeThreshold(
 		buckets[nextLevel].push_back(neighborIndex);
 	};
 
-	for (std::uint16_t levelValue = 0; levelValue <= maxLevel; ++levelValue) {
+	for (std::uint16_t levelValue = 0; levelValue < levels.size(); ++levelValue) {
 		const std::uint8_t level = static_cast<std::uint8_t>(levelValue);
 		auto& bucket = buckets[level];
 
@@ -321,7 +331,8 @@ static std::vector<std::uint8_t> computeThreshold(
 		}
 
 		std::cerr
-			<< "level=" << levelValue
+			<< "level_index=" << levelValue
+			<< " level_m=" << levels[levelValue]
 			<< " cells=" << bucket.size()
 			<< " processed=" << processed
 			<< "\n";
@@ -387,8 +398,7 @@ int main(int argc, char** argv) {
 			boundaryThresholdPtr,
 			options.width,
 			options.height,
-			options.maxLevel,
-			options.step,
+			options.levels,
 			options.connectivity
 		);
 

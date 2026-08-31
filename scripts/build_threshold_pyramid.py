@@ -11,6 +11,14 @@ import numpy as np
 from PIL import Image
 
 from grid import load_config
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	SENTINEL_M,
+	class_for_meters,
+	format_level,
+	threshold_config,
+)
 
 
 TERRARIUM_OFFSET = 32768.0
@@ -28,8 +36,17 @@ def encode_terrarium(values):
 	return np.stack((red, green, blue), axis=-1)
 
 
+def classes_to_meters(values):
+	array = np.asarray(values, dtype=np.uint8)
+	if np.any(array > SENTINEL_CLASS):
+		raise ValueError("Threshold-Raster enthält ungültige Klassen.")
+
+	lookup = np.asarray((*LEVELS_M, SENTINEL_M), dtype=np.float64)
+	return lookup[array]
+
+
 def png_bytes(values):
-	rgb = encode_terrarium(values)
+	rgb = encode_terrarium(classes_to_meters(values))
 	buffer = io.BytesIO()
 	Image.fromarray(rgb, "RGB").save(buffer, format="PNG", optimize=True)
 	return buffer.getvalue()
@@ -199,13 +216,15 @@ def write_zoom(
 	}
 
 
-def area_report(array, fine_counts, fine_cells, levels, scale):
+def area_report(array, fine_counts, fine_cells, levels_m, scale):
 	report = {}
 
-	for level in levels:
-		count = int(np.count_nonzero(array <= level)) * scale
-		error = count - fine_counts[str(level)]
-		report[str(level)] = {
+	for level_m in levels_m:
+		class_index = class_for_meters(level_m)
+		key = format_level(level_m)
+		count = int(np.count_nonzero(array <= class_index)) * scale
+		error = count - fine_counts[key]
+		report[key] = {
 			"estimated_fine_cells": count,
 			"error_cells": error,
 			"error_pct_domain": round(100.0 * error / fine_cells, 6),
@@ -227,8 +246,8 @@ def main():
 	parser.add_argument("--output", default="tmp/phase1a/sea-level-threshold.mbtiles")
 	parser.add_argument("--report", default="tmp/phase1a/pyramid-report.json")
 	parser.add_argument("--minzoom", type=int, default=6)
-	parser.add_argument("--sentinel", type=int, default=101)
-	parser.add_argument("--levels", default="0,1,2,5,10,20,50,100")
+	parser.add_argument("--sentinel", type=int, default=SENTINEL_CLASS)
+	parser.add_argument("--levels", default="0,0.5,1,2,5,10,20,50,70")
 	args = parser.parse_args()
 
 	config = load_config(args.config)
@@ -240,8 +259,14 @@ def main():
 	if args.minzoom > maxzoom:
 		raise ValueError("--minzoom darf nicht größer als Processing-Zoom sein.")
 
-	levels = [
-		int(value.strip())
+	if args.sentinel != SENTINEL_CLASS:
+		raise ValueError(
+			f"Sentinel muss für {threshold_config()['scheme']} "
+			f"{SENTINEL_CLASS} sein."
+		)
+
+	levels_m = [
+		float(value.strip())
 		for value in args.levels.split(",")
 		if value.strip()
 	]
@@ -254,8 +279,10 @@ def main():
 	)
 
 	fine_counts = {
-		str(level): int(np.count_nonzero(threshold <= level))
-		for level in levels
+		format_level(level_m): int(
+			np.count_nonzero(threshold <= class_for_meters(level_m))
+		)
+		for level_m in levels_m
 	}
 	fine_cells = int(threshold.size)
 
@@ -277,8 +304,9 @@ def main():
 		"method": "stratified-nearest-bayer-2x2",
 		"minzoom": args.minzoom,
 		"maxzoom": maxzoom,
+		"threshold": threshold_config(),
 		"sentinel": args.sentinel,
-		"levels": levels,
+		"levels_m": levels_m,
 		"zooms": [],
 	}
 
@@ -303,7 +331,7 @@ def main():
 				current,
 				fine_counts,
 				fine_cells,
-				levels,
+				levels_m,
 				scale,
 			)
 			report["zooms"].append(zoom_result)

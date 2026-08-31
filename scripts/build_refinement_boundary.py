@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+from threshold_levels import LEVELS_M, SENTINEL_CLASS
+
 
 NO_SEED = 255
 
@@ -49,8 +51,6 @@ def build_boundary(
 	coarse_threshold_path,
 	fine_grid_path,
 	output_path,
-	*,
-	max_level=100,
 ):
 	coarse_grid = load_grid(coarse_grid_path)
 	fine_grid = load_grid(fine_grid_path)
@@ -130,8 +130,8 @@ def build_boundary(
 		),
 	])
 
-	sentinel = max_level + 1
-	active = edge <= max_level
+	sentinel = SENTINEL_CLASS
+	active = edge < sentinel
 	report = {
 		"coarse_grid": str(coarse_grid_path),
 		"fine_grid": str(fine_grid_path),
@@ -141,8 +141,10 @@ def build_boundary(
 		"active_boundary_seeds": int(np.count_nonzero(active)),
 		"sentinel_boundary_cells": int(np.count_nonzero(edge == sentinel)),
 		"unmapped_boundary_cells": int(np.count_nonzero(edge == NO_SEED)),
-		"active_min": int(edge[active].min()) if np.any(active) else None,
-		"active_max": int(edge[active].max()) if np.any(active) else None,
+		"active_min_class": int(edge[active].min()) if np.any(active) else None,
+		"active_max_class": int(edge[active].max()) if np.any(active) else None,
+		"active_min_m": LEVELS_M[int(edge[active].min())] if np.any(active) else None,
+		"active_max_m": LEVELS_M[int(edge[active].max())] if np.any(active) else None,
 	}
 
 	report_path = output_path.with_suffix(".report.json")
@@ -165,7 +167,6 @@ def main():
 	parser.add_argument("--coarse-threshold", required=True)
 	parser.add_argument("--fine-grid", required=True)
 	parser.add_argument("--output", required=True)
-	parser.add_argument("--max-level", type=int, default=100)
 	args = parser.parse_args()
 
 	report = build_boundary(
@@ -173,7 +174,6 @@ def main():
 		args.coarse_threshold,
 		args.fine_grid,
 		args.output,
-		max_level=args.max_level,
 	)
 	print(json.dumps(report, indent=2))
 

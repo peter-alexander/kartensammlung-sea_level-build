@@ -9,6 +9,8 @@ import numpy as np
 from shapely.geometry import shape
 from shapely import contains_xy
 
+from threshold_levels import LEVELS_M, SENTINEL_CLASS, threshold_config
+
 
 WEB_MERCATOR_RADIUS = 6378137.0
 
@@ -110,6 +112,7 @@ def metric_state():
 		"gt1": 0,
 		"gt2": 0,
 		"gt5": 0,
+		"excluded_sentinel": 0,
 	}
 
 
@@ -117,22 +120,30 @@ def add_metrics(state, fine_values, base_values, mask):
 	if not np.any(mask):
 		return
 
-	diff = (
-		fine_values[mask].astype(np.int16)
-		- base_values[mask].astype(np.int16)
+	valid = (
+		mask
+		& (fine_values < SENTINEL_CLASS)
+		& (base_values < SENTINEL_CLASS)
 	)
+	state["excluded_sentinel"] += int(
+		np.count_nonzero(mask) - np.count_nonzero(valid)
+	)
+	if not np.any(valid):
+		return
+
+	lookup = np.asarray(LEVELS_M, dtype=np.float64)
+	fine_m = lookup[fine_values[valid]]
+	base_m = lookup[base_values[valid]]
+	diff = fine_m - base_m
 	abs_diff = np.abs(diff)
 
 	state["count"] += int(abs_diff.size)
-	state["equal"] += int(np.count_nonzero(abs_diff == 0))
-	state["abs_sum"] += int(abs_diff.sum())
-	state["max_abs"] = max(
-		state["max_abs"],
-		int(abs_diff.max(initial=0)),
-	)
-	state["gt1"] += int(np.count_nonzero(abs_diff > 1))
-	state["gt2"] += int(np.count_nonzero(abs_diff > 2))
-	state["gt5"] += int(np.count_nonzero(abs_diff > 5))
+	state["equal"] += int(np.count_nonzero(fine_values[valid] == base_values[valid]))
+	state["abs_sum"] += float(abs_diff.sum())
+	state["max_abs"] = max(state["max_abs"], float(abs_diff.max(initial=0.0)))
+	state["gt1"] += int(np.count_nonzero(abs_diff > 1.0))
+	state["gt2"] += int(np.count_nonzero(abs_diff > 2.0))
+	state["gt5"] += int(np.count_nonzero(abs_diff > 5.0))
 
 
 def parent_clip_edge_mask(
@@ -209,12 +220,20 @@ def collect_edge_outliers(
 	if not np.any(edge):
 		return
 
-	diff = (
-		fine_values.astype(np.int16)
-		- base_values.astype(np.int16)
+	valid = (
+		edge
+		& (fine_values < SENTINEL_CLASS)
+		& (base_values < SENTINEL_CLASS)
 	)
+	if not np.any(valid):
+		return
+
+	lookup = np.asarray(LEVELS_M, dtype=np.float64)
+	fine_m = lookup[np.minimum(fine_values, SENTINEL_CLASS - 1)]
+	base_m = lookup[np.minimum(base_values, SENTINEL_CLASS - 1)]
+	diff = fine_m - base_m
 	abs_diff = np.abs(diff)
-	candidate_mask = edge & (abs_diff > 1)
+	candidate_mask = valid & (abs_diff > 1.0)
 
 	if not np.any(candidate_mask):
 		return
@@ -244,15 +263,19 @@ def collect_edge_outliers(
 		)
 		lon = mercator_x_to_lon(x)
 		lat = mercator_y_to_lat(y)
-		fine_value = int(fine_values[local_row, col])
-		base_value = int(base_values[local_row, col])
+		fine_class = int(fine_values[local_row, col])
+		base_class = int(base_values[local_row, col])
+		fine_value = LEVELS_M[fine_class]
+		base_value = LEVELS_M[base_class]
 
 		outliers.append({
 			"edge_kind": edge_kind,
-			"abs_diff_m": int(absolute_difference),
-			"signed_diff_m": fine_value - base_value,
+			"abs_diff_m": round(float(absolute_difference), 6),
+			"signed_diff_m": round(fine_value - base_value, 6),
 			"fine_threshold_m": fine_value,
 			"base_threshold_m": base_value,
+			"fine_threshold_class": fine_class,
+			"base_threshold_class": base_class,
 			"lon": round(lon, 8),
 			"lat": round(lat, 8),
 			"fine_row": int(row),
@@ -275,6 +298,7 @@ def finish_metrics(state):
 	if count == 0:
 		return {
 			"count": 0,
+			"excluded_sentinel": state["excluded_sentinel"],
 			"exact_equal_pct": None,
 			"mean_abs_diff_m": None,
 			"max_abs_diff_m": None,
@@ -285,9 +309,10 @@ def finish_metrics(state):
 
 	return {
 		"count": count,
+		"excluded_sentinel": state["excluded_sentinel"],
 		"exact_equal_pct": round(100.0 * state["equal"] / count, 6),
 		"mean_abs_diff_m": round(state["abs_sum"] / count, 6),
-		"max_abs_diff_m": state["max_abs"],
+		"max_abs_diff_m": round(state["max_abs"], 6),
 		"pct_diff_gt_1m": round(100.0 * state["gt1"] / count, 6),
 		"pct_diff_gt_2m": round(100.0 * state["gt2"] / count, 6),
 		"pct_diff_gt_5m": round(100.0 * state["gt5"] / count, 6),
@@ -531,6 +556,10 @@ def build_composite(
 		"config": {
 			"name": "hierarchical-composite",
 			"bounds": base_meta.get("config", {}).get("bounds"),
+			"threshold": (
+				base_meta.get("config", {}).get("threshold")
+				or threshold_config(connectivity=4)
+			),
 			"base_grid": str(base_grid_path),
 			"fine_grid": str(fine_grid_path),
 			"core_geojson": str(core_geojson_path),

@@ -9,6 +9,8 @@ import numpy as np
 from shapely.geometry import box, mapping, shape
 from shapely.ops import transform
 
+from threshold_levels import threshold_config
+
 from coverage_planner import (
 	WEB_MERCATOR_WORLD,
 	exclusive_max_tile,
@@ -201,13 +203,10 @@ def prepare_region(
 			"tile_size": int(parent_grid["tile_size"]),
 			"encoding": "terrarium",
 		},
-		"threshold": {
-			"min_m": 0,
-			"max_m": 100,
-			"step_m": 1,
-			"connectivity": 4,
-			"sentinel": 101,
-		},
+		"threshold": (
+			parent_meta.get("config", {}).get("threshold")
+			or threshold_config(connectivity=4)
+		),
 	}
 
 	Path(output_config).parent.mkdir(parents=True, exist_ok=True)
