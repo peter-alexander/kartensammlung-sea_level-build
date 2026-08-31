@@ -263,6 +263,53 @@ def source_tier(
 	}
 
 
+def processing_recommendations(
+	latitude,
+	tier,
+	*,
+	tier2_target_ground_resolution_m=12.0,
+	tier3_target_ground_resolution_m=6.0,
+):
+	automatic_processing_zoom = None
+	automatic_ground = None
+	if tier["automatic_tier"] == 2:
+		automatic_processing_zoom = recommended_zoom(
+			latitude,
+			tier2_target_ground_resolution_m,
+		)
+		automatic_ground = ground_resolution(
+			latitude,
+			automatic_processing_zoom,
+		)
+
+	tier3_processing_zoom = None
+	tier3_ground = None
+	if tier["tier3_candidate"]:
+		tier3_processing_zoom = recommended_zoom(
+			latitude,
+			tier3_target_ground_resolution_m,
+		)
+		tier3_ground = ground_resolution(
+			latitude,
+			tier3_processing_zoom,
+		)
+
+	return {
+		"recommended_processing_zoom": automatic_processing_zoom,
+		"recommended_ground_resolution_m": (
+			round(automatic_ground, 3)
+			if automatic_ground is not None
+			else None
+		),
+		"tier3_candidate_processing_zoom": tier3_processing_zoom,
+		"tier3_candidate_ground_resolution_m": (
+			round(tier3_ground, 3)
+			if tier3_ground is not None
+			else None
+		),
+	}
+
+
 def intersecting_archives(download_data, bounds):
 	west, south, east, north = bounds
 	result = []
@@ -427,45 +474,20 @@ def plan(
 		)
 
 		centroid_lat = geometry.representative_point().y
-
-		automatic_processing_zoom = None
-		automatic_ground = None
-		if tier["automatic_tier"] == 2:
-			automatic_processing_zoom = recommended_zoom(
-				centroid_lat,
-				tier2_target_ground_resolution_m,
-			)
-			automatic_ground = ground_resolution(
-				centroid_lat,
-				automatic_processing_zoom,
-			)
-
-		tier3_processing_zoom = None
-		tier3_ground = None
-		if tier["tier3_candidate"]:
-			tier3_processing_zoom = recommended_zoom(
-				centroid_lat,
-				tier3_target_ground_resolution_m,
-			)
-			tier3_ground = ground_resolution(
-				centroid_lat,
-				tier3_processing_zoom,
-			)
+		recommendations = processing_recommendations(
+			centroid_lat,
+			tier,
+			tier2_target_ground_resolution_m=(
+				tier2_target_ground_resolution_m
+			),
+			tier3_target_ground_resolution_m=(
+				tier3_target_ground_resolution_m
+			),
+		)
 
 		planning = {
 			**tier,
-			"recommended_processing_zoom": automatic_processing_zoom,
-			"recommended_ground_resolution_m": (
-				round(automatic_ground, 3)
-				if automatic_ground is not None
-				else None
-			),
-			"tier3_candidate_processing_zoom": tier3_processing_zoom,
-			"tier3_candidate_ground_resolution_m": (
-				round(tier3_ground, 3)
-				if tier3_ground is not None
-				else None
-			),
+			**recommendations,
 		}
 
 		bounds_source = list(geometry.bounds)
