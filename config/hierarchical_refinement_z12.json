@@ -1,0 +1,37 @@
+{
+	"name": "hierarchical-refinement-z12-rotterdam-delft",
+	"bounds": {
+		"west": 4.21875,
+		"south": 51.89005393521691,
+		"east": 4.5703125,
+		"north": 52.106505190756316
+	},
+	"refinement": {
+		"parent_zoom": 11,
+		"core_bounds": {
+			"west": 4.306640625,
+			"south": 51.944264879028765,
+			"east": 4.482421875,
+			"north": 52.05249047600099
+		}
+	},
+	"dem": {
+		"provider": "mapterhorn",
+		"tile_endpoint": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+		"processing_zoom": 12,
+		"tile_size": 512,
+		"encoding": "terrarium"
+	},
+	"sea_mask": {
+		"provider": "osmdata.openstreetmap.de",
+		"url": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+		"crs": "EPSG:3857"
+	},
+	"threshold": {
+		"min_m": 0,
+		"max_m": 100,
+		"step_m": 1,
+		"connectivity": 4,
+		"sentinel": 101
+	}
+}
