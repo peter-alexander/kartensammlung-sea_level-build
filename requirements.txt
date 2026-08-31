@@ -2,3 +2,5 @@ numpy
 Pillow
 rasterio
 geopandas
+mapbox-vector-tile
+shapely
