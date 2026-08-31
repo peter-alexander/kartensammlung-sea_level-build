@@ -1,0 +1,17 @@
+{
+    "tile_compression": "none",
+    "tile_type": "png",
+    "minzoom": 5,
+    "maxzoom": 10,
+    "bounds": [
+        -2.5,
+        49.5,
+        13,
+        58
+    ],
+    "center": [
+        5.25,
+        53.75,
+        5
+    ]
+}
