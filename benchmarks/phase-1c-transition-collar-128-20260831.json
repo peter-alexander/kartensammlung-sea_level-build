@@ -1,0 +1,56 @@
+{
+	"benchmark": "phase-1c-western-netherlands-transition-collar",
+	"date": "2026-08-31",
+	"parent_zoom": 11,
+	"refinement_zoom": 12,
+	"source": "nlahn5lowresfilled",
+	"source_native_resolution_m": 5.0,
+	"transition_buffer_pixels": 128,
+	"transition_buffer_projected_m": 2445.98490512564,
+	"halo_tiles": 1,
+	"fine_work_tiles": 1064,
+	"fine_pixels_written": 121261545,
+	"output_cells": 358612992,
+	"pmtiles_bytes": 10799960,
+	"pmtiles_verify": true,
+	"whole_refinement_vs_upsampled_base": {
+		"count": 121261545,
+		"exact_equal_pct": 78.097714,
+		"mean_abs_diff_m": 0.2239,
+		"max_abs_diff_m": 15,
+		"pct_diff_gt_1m": 0.369751,
+		"pct_diff_gt_2m": 0.084079,
+		"pct_diff_gt_5m": 0.004086
+	},
+	"refinement_seam_vs_upsampled_base": {
+		"count": 76588,
+		"exact_equal_pct": 97.819502,
+		"mean_abs_diff_m": 0.022928,
+		"max_abs_diff_m": 4,
+		"pct_diff_gt_1m": 0.088787,
+		"pct_diff_gt_2m": 0.020891,
+		"pct_diff_gt_5m": 0.0
+	},
+	"parent_clip_boundary_vs_upsampled_base": {
+		"count": 17275,
+		"exact_equal_pct": 91.797395,
+		"mean_abs_diff_m": 0.082952,
+		"max_abs_diff_m": 4,
+		"pct_diff_gt_1m": 0.069465,
+		"pct_diff_gt_2m": 0.017366,
+		"pct_diff_gt_5m": 0.0
+	},
+	"zero_buffer_baseline_seam": {
+		"count": 137013,
+		"exact_equal_pct": 92.036522,
+		"mean_abs_diff_m": 0.081802,
+		"max_abs_diff_m": 14,
+		"pct_diff_gt_1m": 0.110938,
+		"pct_diff_gt_2m": 0.056199,
+		"pct_diff_gt_5m": 0.002919
+	},
+	"decision": {
+		"initial_production_transition_buffer_pixels": 128,
+		"reason": "Removes large source-edge threshold jumps while keeping the refinement work area compact. No tested refinement-seam pixel differs from the upsampled parent by more than 5 m; maximum observed seam difference is 4 m."
+	}
+}
