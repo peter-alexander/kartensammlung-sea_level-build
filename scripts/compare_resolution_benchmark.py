@@ -163,7 +163,8 @@ def main():
 		) / 2.0
 		ground_pixel = grid["resolution"] * math.cos(math.radians(center_lat))
 		report["runs"][str(zoom)] = {
-			"shape": [grid["height"],grid["width"]],
+			"shape": [int(threshold.shape[0]), int(threshold.shape[1])],
+			"full_grid_shape": [grid["height"], grid["width"]],
 			"cells": int(threshold.size),
 			"ground_pixel_m_approx": round(ground_pixel,3),
 			"sample_points": sample_points(grid_meta,threshold),
