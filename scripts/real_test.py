@@ -20,7 +20,7 @@ except ImportError as error:
 		"Benötigt: numpy, pillow, rasterio, geopandas (pip install numpy pillow rasterio geopandas)"
 	) from error
 
-from sea_level_priority_flood import compute_inundation_threshold
+from priority_flood import compute_inundation_threshold
 
 WEB_MERCATOR_RADIUS = 6378137.0
 WEB_MERCATOR_WORLD = 2.0 * math.pi * WEB_MERCATOR_RADIUS
