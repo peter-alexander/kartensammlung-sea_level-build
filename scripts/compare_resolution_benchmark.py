@@ -140,6 +140,11 @@ def compare_to_fine(coarse, fine, factor, levels):
 			6,
 		)
 
+	max_slider_key = max(
+		slider_state_disagreement_pct,
+		key=slider_state_disagreement_pct.get,
+	)
+
 	if valid_diff.size == 0:
 		return {
 			"valid_cells": 0,
@@ -150,6 +155,10 @@ def compare_to_fine(coarse, fine, factor, levels):
 			"pct_diff_gt_2m": None,
 			"pct_diff_gt_5m": None,
 			"slider_state_disagreement_pct": slider_state_disagreement_pct,
+			"max_slider_state_disagreement": {
+				"level_m": float(max_slider_key),
+				"pct": slider_state_disagreement_pct[max_slider_key],
+			},
 		}
 
 	abs_diff = np.abs(valid_diff)
@@ -162,6 +171,10 @@ def compare_to_fine(coarse, fine, factor, levels):
 		"pct_diff_gt_2m": round(float(np.mean(abs_diff > 2) * 100), 4),
 		"pct_diff_gt_5m": round(float(np.mean(abs_diff > 5) * 100), 4),
 		"slider_state_disagreement_pct": slider_state_disagreement_pct,
+		"max_slider_state_disagreement": {
+			"level_m": float(max_slider_key),
+			"pct": slider_state_disagreement_pct[max_slider_key],
+		},
 	}
 
 
@@ -178,7 +191,7 @@ def main():
 		grid_meta, threshold = load_run(path)
 		runs[zoom] = (grid_meta, threshold)
 
-	levels = [0,0.5,1,2,3,4,5,6,7,8,10,20,50,70]
+	levels = list(LEVELS_M)
 	report = {
 		"levels": levels,
 		"runs": {},
