@@ -81,7 +81,7 @@ def main():
 			f"{dem['pmtiles']} north-sea-dem.pmtiles"
 		),
 		"mapterhorn_dry_run_command": (
-			"pmtiles extract "
+			"go-pmtiles extract "
 			f"--bbox={bounds['west']},{bounds['south']},{bounds['east']},{bounds['north']} "
 			f"--maxzoom={zoom} --overfetch=0 --dry-run "
 			f"{dem['pmtiles']} north-sea-dem.pmtiles"
