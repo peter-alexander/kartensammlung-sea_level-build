@@ -374,13 +374,29 @@ Der erste vollständige hierarchische Phase-1C-Pilot funktioniert:
 
 Das resultierende PMTiles wurde erfolgreich verifiziert.
 
-Das veröffentlichte Phase-1C-PMTiles ist ein historisches V1-Artefakt. Der
-Pipeline-Code verwendet inzwischen V2 mit 58 nichtlinearen Klassen bis 70 m.
+Der historische V1-Composite bleibt unter `output/phase1c/` erhalten. Der
+validierte V2-Composite liegt separat unter `output/phase1c-v2/`.
+
+Für V2 wurde zusätzlich eine Slider-zustandsbasierte Seam-QA eingeführt. Sie
+zählt pro Sliderstufe direkt die Randpixel, bei denen Base und Fine einen
+unterschiedlichen Zustand `threshold <= slider` liefern. Das ist bei
+nichtlinearen Klassen aussagekräftiger als eine reine Meterdifferenz.
+
+An der echten Refinement-Seam wurden 76.588 Randpixel geprüft:
+
+| Sliderbereich | maximale unterschiedliche Darstellung | Pegel |
+| --- | ---: | ---: |
+| 0–2 m | **4 Pixel / 0,005223 %** | 0,2 m |
+| >2–5 m | **538 Pixel / 0,702460 %** | 4,75 m |
+| >5–20 m | **69 Pixel / 0,090092 %** | 17 m |
+| >20–70 m | **63 Pixel / 0,082258 %** | 30 m |
+
+Das V2-PMTiles ist 15.125.875 Bytes groß, umfasst Z6–Z12 und wurde mit
+`go-pmtiles verify` erfolgreich geprüft.
 
 Nächste Schritte:
 
-1. Phase 1C mit V2 neu bauen,
-2. Seam-QA und Dateigröße erneut prüfen,
-3. den zusammengesetzten V2-Datensatz visuell in der Kartensammlung testen,
-4. den Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholen,
-5. erst danach die größere Parent-Region festlegen.
+1. V2 in der Kartensammlung visuell testen, besonders 0–2 m und 4,75–5 m,
+2. Z11/Z12/Z13 unter dem V2-Klassenschema erneut benchmarken,
+3. daraus die automatische Coverage→Processing-Zoom-Regel ableiten,
+4. erst danach auf ein größeres Parent-Gebiet skalieren.

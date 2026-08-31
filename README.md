@@ -23,28 +23,40 @@ Die Pipeline funktioniert inzwischen hierarchisch end-to-end:
 - PMTiles-Ausgabe.
 
 Phase 1C für die westlichen Niederlande kombiniert eine Z11-Base mit einem
-automatisch erkannten AHN5-Z12-Refinement. Ein 128-Pixel-Transition-Collar
-reduziert die maximale gemessene Fine/Base-Seam-Abweichung von 14 m auf 4 m;
-kein getesteter Seam-Pixel unterscheidet sich noch um mehr als 5 m.
+automatisch erkannten AHN5-Z12-Refinement. Der historische V1-Lauf bleibt unter
+`output/phase1c/` erhalten.
 
-Das resultierende Z6–Z12-PMTiles ist rund 10,8 MB groß und wurde erfolgreich
-verifiziert. Dieses veröffentlichte Phase-1C-Artefakt verwendet noch das
-historische V1-Schema mit 1-m-Schritten bis 100 m.
-
-Für V2 ist der Modellbereich auf 0–70 m begrenzt und nichtlinear quantisiert:
+Der validierte V2-Lauf liegt unter `output/phase1c-v2/` und verwendet:
 
 - 0–2 m: 0,1-m-Schritte,
 - >2–5 m: 0,25-m-Schritte,
 - >5–20 m: 1-m-Schritte,
-- >20–70 m: 5-m-Schritte.
+- >20–70 m: 5-m-Schritte,
+- 58 reguläre Klassen plus Sentinel.
 
-Das ergibt 58 reguläre Klassen plus Sentinel. Die numerische Klassenauflösung ist
-nicht mit der regional tatsächlich verfügbaren DEM-Genauigkeit gleichzusetzen;
-diese hängt von der jeweiligen Quelle ab.
+Das V2-PMTiles umfasst Z6–Z12, ist 15.125.875 Bytes groß und wurde erfolgreich
+verifiziert. Die neue Slider-Seam-QA vergleicht nicht nur Meterdifferenzen,
+sondern direkt, ob Base und Fine bei einer konkreten Sliderstufe unterschiedliche
+Überflutungszustände liefern.
 
-Nächster Schritt ist ein erneuter Phase-1C-Build mit V2 und danach der visuelle
-Test in der Kartensammlung. Vor einer endgültigen Produktionsauflösung wird auch
-der Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholt.
+An der echten Refinement-Seam liegt die maximale Abweichung bei:
+
+- 0–2 m: 4 von 76.588 Randpixeln (0,005223 %) bei 0,2 m,
+- >2–5 m: 538 Pixel (0,702460 %) bei 4,75 m,
+- >5–20 m: 69 Pixel (0,090092 %) bei 17 m,
+- >20–70 m: 63 Pixel (0,082258 %) bei 30 m.
+
+Gerade im zentralen 0–2-m-Bereich ist die sichtbare Fine/Base-Seam damit
+praktisch verschwunden. Der Bereich um 4,75–5 m wird beim visuellen Test gezielt
+kontrolliert.
+
+Die numerische Klassenauflösung ist nicht mit der regional tatsächlich
+verfügbaren DEM-Genauigkeit gleichzusetzen; diese hängt von der jeweiligen Quelle
+ab.
+
+Nächster Schritt ist der visuelle Test des V2-Composites in der Kartensammlung.
+Danach wird der Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholt, bevor die
+automatische Coverage→Processing-Zoom-Regel endgültig festgelegt wird.
 
 ## Struktur
 
