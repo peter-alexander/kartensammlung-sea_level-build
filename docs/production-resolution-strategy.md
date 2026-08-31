@@ -283,16 +283,29 @@ Vorgeschlagen:
 2. Nordseeküste als erster 10–15-m-Refinement-Layer,
 3. danach weitere High-Resolution-Küstenregionen.
 
+## Hierarchische Refinements
+
+Die Randbedingungs-Pipeline ist inzwischen implementiert und real getestet.
+
+Siehe:
+
+`docs/hierarchical-refinements.md`
+
+Ein Boundary-only-Z11→Z12-Benchmark mit einer 512-Pixel-Halozone reproduziert
+im 1024×1024-Pixel-Prüfcore die vollständige Z12-Referenz zu **100 % pixelgenau**,
+obwohl im Refinement selbst keine Ocean-Seeds verwendet wurden.
+
 ## Nächster technischer Schritt
 
-Bevor Europa gebaut wird, wird die Pipeline für **hierarchische Refinements**
-erweitert:
+Als nächstes wird erstmals ein **zusammengesetzter hierarchischer Datensatz**
+gebaut:
 
-1. grober Threshold als Randbedingung einlesen,
-2. High-Resolution-Region auf 10–15 m rechnen,
-3. Fine-Threshold über den groben Datensatz legen,
-4. Übergang am Refinement-Rand prüfen,
-5. gemeinsame PMTiles-Ausgabe erzeugen.
+1. grobe Nordsee-/Europa-Basis als Parent,
+2. westliche Niederlande als ungefähr 12-m-Refinement,
+3. Fine-Workarea mit Halo rechnen,
+4. nur den inneren Fine-Core in die Base übernehmen,
+5. gemeinsame Rasterpyramide erzeugen,
+6. ein einziges PMTiles-Archiv für MapLibre ausgeben.
 
-Danach kann Phase 1A in den Niederlanden als erstes echtes Refinement des größeren
-Nordsee-/Europa-Basisrasters neu aufgebaut werden.
+Damit testen wir nicht mehr den Flood-Algorithmus, sondern den vollständigen
+Produktionsweg Base + Refinement → ein Client-Datensatz.
