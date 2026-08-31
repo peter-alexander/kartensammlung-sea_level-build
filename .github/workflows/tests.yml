@@ -22,7 +22,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install numpy
+          python -m pip install numpy Pillow
 
       - name: Build quantized Priority Flood
         run: |
@@ -34,3 +34,4 @@ jobs:
       - name: Run reference comparison
         run: |
           python tests/test_quantized_priority_flood.py
+          python tests/test_threshold_pyramid.py
