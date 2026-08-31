@@ -346,6 +346,12 @@ def geometry_feature(source, geometry, metadata, planning):
 		"recommended_ground_resolution_m": planning.get(
 			"recommended_ground_resolution_m"
 		),
+		"tier3_candidate_processing_zoom": planning.get(
+			"tier3_candidate_processing_zoom"
+		),
+		"tier3_candidate_ground_resolution_m": planning.get(
+			"tier3_candidate_ground_resolution_m"
+		),
 	}
 
 	return {
