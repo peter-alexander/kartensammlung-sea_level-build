@@ -1,6 +1,11 @@
 name: Phase 1C hierarchical composite
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/phase-1c-composite.yml
   workflow_dispatch:
 
 jobs:
@@ -151,11 +156,12 @@ jobs:
       - name: Prepare automatic AHN Z12 refinement region
         run: |
           python scripts/prepare_refinement_region.py \
-            --sources-geojson tmp/phase1c/coverage/sources.geojson \
+            --sources-geojson tmp/phase1c/coverage/sources-context.geojson \
             --source nlahn5lowresfilled \
             --parent-grid tmp/phase1c/base/grid.json \
             --fine-zoom 12 \
             --halo-tiles 1 \
+            --transition-buffer-pixels 128 \
             --output-config tmp/phase1c/refinement-config.json \
             --output-core tmp/phase1c/refinement-core.geojson
 
@@ -313,12 +319,12 @@ jobs:
           )
           print("=== Echte Mapterhorn-Source-Seam ===")
           print(json.dumps(
-              report["source_coverage_seam_vs_upsampled_base"],
+              report["refinement_seam_vs_upsampled_base"],
               indent=2,
           ))
           print("=== Größte echte Source-Seam-Ausreißer ===")
           print(json.dumps(
-              report["source_coverage_seam_top_outliers"][:20],
+              report["refinement_seam_top_outliers"][:20],
               indent=2,
           ))
           print("=== Pilot-BBox-Clipping-Rand ===")
@@ -340,6 +346,7 @@ jobs:
           path: |
             tmp/phase1c/coverage/plan.json
             tmp/phase1c/coverage/sources.geojson
+            tmp/phase1c/coverage/sources-context.geojson
             tmp/phase1c/coverage/tier2.geojson
             tmp/phase1c/refinement-config.json
             tmp/phase1c/refinement-config.report.json
