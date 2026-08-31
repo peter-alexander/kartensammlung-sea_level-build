@@ -46,6 +46,39 @@ def _validate_inputs(elevation, sea_mask):
 	return rows, cols
 
 
+def _validate_boundary_threshold(boundary_threshold, rows, cols):
+	if boundary_threshold is None:
+		return
+
+	boundary_rows, boundary_cols = _grid_shape(
+		boundary_threshold,
+		"boundary_threshold",
+	)
+	if (boundary_rows, boundary_cols) != (rows, cols):
+		raise ValueError(
+			"boundary_threshold muss dieselbe Rastergröße wie elevation haben."
+		)
+
+	for row in range(rows):
+		for col in range(cols):
+			value = boundary_threshold[row][col]
+
+			if value is None:
+				continue
+			if isinstance(value, bool) or not isinstance(value, (int, float)):
+				raise ValueError(
+					f"boundary_threshold[{row}][{col}] muss Zahl oder null sein."
+				)
+			if not math.isfinite(value) or value < 0:
+				raise ValueError(
+					f"boundary_threshold[{row}][{col}] muss endlich und >= 0 sein."
+				)
+			if row not in (0, rows - 1) and col not in (0, cols - 1):
+				raise ValueError(
+					"boundary_threshold darf nur am äußeren Rasterrand Seeds enthalten."
+				)
+
+
 def _neighbor_offsets(connectivity):
 	if connectivity == 4:
 		return (
@@ -76,6 +109,7 @@ def compute_inundation_threshold(
 	*,
 	connectivity=8,
 	sea_level_zero=0.0,
+	boundary_threshold=None,
 ):
 	"""
 	Berechnet für jede Rasterzelle den niedrigsten Meeresspiegel, bei dem sie
@@ -88,6 +122,7 @@ def compute_inundation_threshold(
 	"""
 
 	rows, cols = _validate_inputs(elevation, sea_mask)
+	_validate_boundary_threshold(boundary_threshold, rows, cols)
 	offsets = _neighbor_offsets(connectivity)
 
 	threshold = [
@@ -98,14 +133,31 @@ def compute_inundation_threshold(
 
 	for row in range(rows):
 		for col in range(cols):
-			if not sea_mask[row][col]:
+			if sea_mask[row][col]:
+				threshold[row][col] = float(sea_level_zero)
+				heapq.heappush(queue, (float(sea_level_zero), row, col))
+
+			if boundary_threshold is None:
 				continue
 
-			threshold[row][col] = float(sea_level_zero)
-			heapq.heappush(queue, (float(sea_level_zero), row, col))
+			boundary_value = boundary_threshold[row][col]
+			if boundary_value is None:
+				continue
+
+			seed_threshold = max(
+				float(boundary_value),
+				float(elevation[row][col]),
+			)
+			if seed_threshold >= threshold[row][col]:
+				continue
+
+			threshold[row][col] = seed_threshold
+			heapq.heappush(queue, (seed_threshold, row, col))
 
 	if not queue:
-		raise ValueError("sea_mask enthält keine Meereszelle.")
+		raise ValueError(
+			"Weder sea_mask noch boundary_threshold enthalten eine Seed-Zelle."
+		)
 
 	while queue:
 		current_threshold, row, col = heapq.heappop(queue)
@@ -270,10 +322,12 @@ def main():
 
 	elevation = data.get("elevation")
 	sea_mask = data.get("sea_mask")
+	boundary_threshold = data.get("boundary_threshold")
 	threshold = compute_inundation_threshold(
 		elevation,
 		sea_mask,
 		connectivity=args.connectivity,
+		boundary_threshold=boundary_threshold,
 	)
 
 	_write_json(
