@@ -308,6 +308,31 @@ jobs:
           cat tmp/phase1c/refinement-config.report.json
           cat tmp/phase1c/fine/boundary.report.json
           cat tmp/phase1c/composite/report.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("tmp/phase1c/composite/report.json").read_text()
+          )
+          print("=== Echte Mapterhorn-Source-Seam ===")
+          print(json.dumps(
+              report["source_coverage_seam_vs_upsampled_base"],
+              indent=2,
+          ))
+          print("=== Größte echte Source-Seam-Ausreißer ===")
+          print(json.dumps(
+              report["source_coverage_seam_top_outliers"][:20],
+              indent=2,
+          ))
+          print("=== Pilot-BBox-Clipping-Rand ===")
+          print(json.dumps(
+              report["parent_clip_boundary_vs_upsampled_base"],
+              indent=2,
+          ))
+          PY
+
           du -h \
             tmp/phase1c/sea-level-composite.pmtiles \
             tmp/phase1c/composite/threshold.u8 \
