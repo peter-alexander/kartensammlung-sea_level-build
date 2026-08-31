@@ -150,6 +150,18 @@ def main():
 		if report["parent_clip_boundary_vs_upsampled_base"]["count"] != 0:
 			raise AssertionError(report)
 
+		slider = report[
+			"source_coverage_seam_slider_disagreement_vs_upsampled_base"
+		]
+		if slider["count"] != 4:
+			raise AssertionError(slider)
+		if slider["by_level"]["2"]["different_cells"] != 2:
+			raise AssertionError(slider)
+		if slider["maximum"]["different_cells"] != 4:
+			raise AssertionError(slider)
+		if slider["maximum"]["at_level_m"] != 4.0:
+			raise AssertionError(slider)
+
 	print("ok")
 
 
