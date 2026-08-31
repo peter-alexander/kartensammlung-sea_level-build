@@ -562,6 +562,9 @@ def build_composite(
 		"fine_pixels_written": written,
 		"core_vs_upsampled_base": finish_metrics(core_metrics),
 		"core_edge_vs_upsampled_base": finish_metrics(edge_metrics),
+		"refinement_seam_vs_upsampled_base": finish_metrics(
+			source_seam_metrics
+		),
 		"source_coverage_seam_vs_upsampled_base": finish_metrics(
 			source_seam_metrics
 		),
@@ -569,6 +572,7 @@ def build_composite(
 			parent_clip_metrics
 		),
 		"core_edge_top_outliers": edge_outliers,
+		"refinement_seam_top_outliers": source_seam_outliers,
 		"source_coverage_seam_top_outliers": source_seam_outliers,
 		"parent_clip_boundary_top_outliers": parent_clip_outliers,
 	}
