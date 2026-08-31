@@ -109,7 +109,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add "$OUT"
+          git add -f "$OUT"
           git rm .github/workflows/tmp-phase1c-v2.yml
           git rm .github/workflows/tmp-publish-phase1c-v2.yml
           git commit -m "Publish Phase 1C V2 composite"
