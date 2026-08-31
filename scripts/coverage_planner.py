@@ -645,7 +645,18 @@ def main():
 			})
 		write_geojson(output_dir / name, features)
 
-	print(json.dumps(result["plan"], indent=2))
+	summary = {
+		"bounds": result["plan"]["bounds"],
+		"coverage": result["plan"]["coverage"],
+		"base": result["plan"]["base"],
+		"tier2": result["plan"]["tier2"],
+		"tier3_candidates": result["plan"]["tier3_candidates"],
+		"high_resolution_archives": {
+			"count": result["plan"]["high_resolution_archives"]["count"],
+			"total_bytes": result["plan"]["high_resolution_archives"]["total_bytes"],
+		},
+	}
+	print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
