@@ -1,0 +1,239 @@
+name: Temporary hierarchical refinement benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-hierarchical-refinement-benchmark.yml
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow rasterio
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin unzip
+
+      - name: Build quantized Priority Flood
+        run: |
+          mkdir -p build
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
+            -o build/priority_flood_quantized
+
+      - name: Download OSM ocean polygons
+        run: |
+          mkdir -p cache tmp/ocean-source
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+            -d tmp/ocean-source
+
+      - name: Build coarse base and fine reference
+        run: |
+          set -euo pipefail
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+          test -n "$SHP"
+
+          prepare_grid() {
+            CONFIG="$1"
+            WORK="$2"
+            ALLOW_EMPTY="$3"
+
+            mkdir -p "$WORK"
+
+            python scripts/prepare_phase1a_dem.py \
+              --config "$CONFIG" \
+              --cache-dir cache \
+              --work-dir "$WORK" \
+              --workers 12
+
+            eval "$(
+              python - "$WORK/grid.json" <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          for key in ("left", "bottom", "right", "top", "width", "height"):
+              print(f"GRID_{key.upper()}={shlex.quote(str(grid[key]))}")
+          PY
+            )"
+
+            ogr2ogr \
+              -f GPKG \
+              "$WORK/ocean_clip.gpkg" \
+              "$SHP" \
+              -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
+              -spat_srs EPSG:3857
+
+            gdal_rasterize \
+              -burn 1 \
+              -init 0 \
+              -ot Byte \
+              -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP" \
+              -ts "$GRID_WIDTH" "$GRID_HEIGHT" \
+              -co COMPRESS=DEFLATE \
+              -co TILED=YES \
+              "$WORK/ocean_clip.gpkg" \
+              "$WORK/ocean_mask.tif"
+
+            EXTRA_ARGS=()
+            if [ "$ALLOW_EMPTY" = "yes" ]; then
+              EXTRA_ARGS+=(--allow-empty-sea)
+            fi
+
+            python scripts/write_ocean_mask_raw.py \
+              --grid "$WORK/grid.json" \
+              --input "$WORK/ocean_mask.tif" \
+              --output "$WORK/sea_mask.u8" \
+              "${EXTRA_ARGS[@]}"
+          }
+
+          prepare_grid \
+            config/resolution_benchmark_z11.json \
+            tmp/hierarchy/coarse-z11 \
+            no
+
+          eval "$(
+            python - tmp/hierarchy/coarse-z11/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          build/priority_flood_quantized \
+            --elevation tmp/hierarchy/coarse-z11/elevation.f32 \
+            --sea-mask tmp/hierarchy/coarse-z11/sea_mask.u8 \
+            --output tmp/hierarchy/coarse-z11/threshold.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --max-level 100 \
+            --step 1 \
+            --connectivity 4 \
+            2>&1 | tee tmp/hierarchy/coarse-z11/flood.log
+
+          prepare_grid \
+            config/resolution_benchmark_z12.json \
+            tmp/hierarchy/reference-z12 \
+            no
+
+          eval "$(
+            python - tmp/hierarchy/reference-z12/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          build/priority_flood_quantized \
+            --elevation tmp/hierarchy/reference-z12/elevation.f32 \
+            --sea-mask tmp/hierarchy/reference-z12/sea_mask.u8 \
+            --output tmp/hierarchy/reference-z12/threshold.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --max-level 100 \
+            --step 1 \
+            --connectivity 4 \
+            2>&1 | tee tmp/hierarchy/reference-z12/flood.log
+
+          prepare_grid \
+            config/hierarchical_refinement_z12.json \
+            tmp/hierarchy/refinement-z12 \
+            yes
+
+      - name: Build coarse boundary and refinement
+        run: |
+          python scripts/build_refinement_boundary.py \
+            --coarse-grid tmp/hierarchy/coarse-z11/grid.json \
+            --coarse-threshold tmp/hierarchy/coarse-z11/threshold.u8 \
+            --fine-grid tmp/hierarchy/refinement-z12/grid.json \
+            --output tmp/hierarchy/refinement-z12/boundary.u8 \
+            --max-level 100
+
+          eval "$(
+            python - tmp/hierarchy/refinement-z12/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          build/priority_flood_quantized \
+            --elevation tmp/hierarchy/refinement-z12/elevation.f32 \
+            --sea-mask tmp/hierarchy/refinement-z12/sea_mask.u8 \
+            --boundary-threshold tmp/hierarchy/refinement-z12/boundary.u8 \
+            --output tmp/hierarchy/refinement-z12/threshold.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --max-level 100 \
+            --step 1 \
+            --connectivity 4 \
+            2>&1 | tee tmp/hierarchy/refinement-z12/flood.log
+
+      - name: Compare refinement with full fine reference
+        run: |
+          python scripts/compare_hierarchical_refinement.py \
+            --reference tmp/hierarchy/reference-z12 \
+            --refinement tmp/hierarchy/refinement-z12 \
+            --config config/hierarchical_refinement_z12.json \
+            --boundary-report tmp/hierarchy/refinement-z12/boundary.report.json \
+            --sea-report tmp/hierarchy/refinement-z12/sea_mask.report.json \
+            --output tmp/hierarchy/report.json
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hierarchical-refinement-benchmark
+          path: |
+            tmp/hierarchy/report.json
+            tmp/hierarchy/refinement-z12/boundary.report.json
+            tmp/hierarchy/refinement-z12/sea_mask.report.json
+            tmp/hierarchy/coarse-z11/flood.log
+            tmp/hierarchy/reference-z12/flood.log
+            tmp/hierarchy/refinement-z12/flood.log
+          retention-days: 14
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-hierarchical-refinement-benchmark.yml
+          git commit -m "Remove temporary hierarchical benchmark workflow"
+          git push
