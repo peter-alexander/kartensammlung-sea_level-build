@@ -13,6 +13,16 @@ from shapely import contains_xy
 WEB_MERCATOR_RADIUS = 6378137.0
 
 
+def lon_to_mercator_x(lon):
+	return WEB_MERCATOR_RADIUS * math.radians(lon)
+
+
+def lat_to_mercator_y(lat):
+	return WEB_MERCATOR_RADIUS * math.asinh(
+		math.tan(math.radians(lat))
+	)
+
+
 def mercator_x_to_lon(x):
 	return math.degrees(x / WEB_MERCATOR_RADIUS)
 
@@ -29,12 +39,15 @@ def load_grid(path):
 	return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def load_core_geometry(path):
+def load_core_feature(path):
 	data = json.loads(Path(path).read_text(encoding="utf-8"))
 	if data.get("type") == "Feature":
-		return shape(data["geometry"])
+		return (
+			shape(data["geometry"]),
+			data.get("properties", {}),
+		)
 
-	return shape(data)
+	return shape(data), {}
 
 
 def core_mask_chunk(geometry, grid, row_start, row_end):
@@ -122,6 +135,66 @@ def add_metrics(state, fine_values, base_values, mask):
 	state["gt5"] += int(np.count_nonzero(abs_diff > 5))
 
 
+def parent_clip_edge_mask(
+	edge,
+	fine_grid,
+	row_start,
+	core_properties,
+):
+	clipped_sides = core_properties.get("clipped_sides") or {}
+	target_bounds = core_properties.get("parent_target_bounds")
+
+	if not target_bounds or not any(clipped_sides.values()):
+		return np.zeros_like(edge)
+
+	west, south, east, north = [
+		float(value)
+		for value in target_bounds
+	]
+	tolerance = float(fine_grid["resolution"]) * 1.5
+
+	cols = np.arange(fine_grid["width"], dtype=np.float64)
+	rows = np.arange(
+		row_start,
+		row_start + edge.shape[0],
+		dtype=np.float64,
+	)
+
+	x = (
+		float(fine_grid["left"])
+		+ (cols + 0.5) * float(fine_grid["resolution"])
+	)
+	y = (
+		float(fine_grid["top"])
+		- (rows + 0.5) * float(fine_grid["resolution"])
+	)
+
+	clip = np.zeros_like(edge)
+
+	if clipped_sides.get("west"):
+		clip |= (
+			np.abs(x[None, :] - lon_to_mercator_x(west))
+			<= tolerance
+		)
+	if clipped_sides.get("east"):
+		clip |= (
+			np.abs(x[None, :] - lon_to_mercator_x(east))
+			<= tolerance
+		)
+	if clipped_sides.get("south"):
+		clip |= (
+			np.abs(y[:, None] - lat_to_mercator_y(south))
+			<= tolerance
+		)
+	if clipped_sides.get("north"):
+		clip |= (
+			np.abs(y[:, None] - lat_to_mercator_y(north))
+			<= tolerance
+		)
+
+	return edge & clip
+
+
 def collect_edge_outliers(
 	outliers,
 	fine_values,
@@ -130,6 +203,7 @@ def collect_edge_outliers(
 	fine_grid,
 	row_start,
 	*,
+	edge_kind,
 	limit=50,
 ):
 	if not np.any(edge):
@@ -174,6 +248,7 @@ def collect_edge_outliers(
 		base_value = int(base_values[local_row, col])
 
 		outliers.append({
+			"edge_kind": edge_kind,
 			"abs_diff_m": int(absolute_difference),
 			"signed_diff_m": fine_value - base_value,
 			"fine_threshold_m": fine_value,
@@ -312,10 +387,14 @@ def build_composite(
 	):
 		raise ValueError("Fine-Workarea liegt nicht vollständig im Base-Raster.")
 
-	core = load_core_geometry(core_geojson_path)
+	core, core_properties = load_core_feature(core_geojson_path)
 	core_metrics = metric_state()
 	edge_metrics = metric_state()
+	source_seam_metrics = metric_state()
+	parent_clip_metrics = metric_state()
 	edge_outliers = []
+	source_seam_outliers = []
+	parent_clip_outliers = []
 	written = 0
 
 	for fine_row in range(0, fine_grid["height"], chunk_rows):
@@ -384,12 +463,33 @@ def build_composite(
 		right[:, :-1] = center[:, 1:]
 
 		edge = center & ~(up & down & left & right)
+		parent_clip_edge = parent_clip_edge_mask(
+			edge,
+			fine_grid,
+			fine_row,
+			core_properties,
+		)
+		source_seam_edge = edge & ~parent_clip_edge
+
 		add_metrics(
 			edge_metrics,
 			fine_values,
 			base_values,
 			edge,
 		)
+		add_metrics(
+			source_seam_metrics,
+			fine_values,
+			base_values,
+			source_seam_edge,
+		)
+		add_metrics(
+			parent_clip_metrics,
+			fine_values,
+			base_values,
+			parent_clip_edge,
+		)
+
 		collect_edge_outliers(
 			edge_outliers,
 			fine_values,
@@ -397,6 +497,25 @@ def build_composite(
 			edge,
 			fine_grid,
 			fine_row,
+			edge_kind="all_core_edge",
+		)
+		collect_edge_outliers(
+			source_seam_outliers,
+			fine_values,
+			base_values,
+			source_seam_edge,
+			fine_grid,
+			fine_row,
+			edge_kind="source_coverage_seam",
+		)
+		collect_edge_outliers(
+			parent_clip_outliers,
+			fine_values,
+			base_values,
+			parent_clip_edge,
+			fine_grid,
+			fine_row,
+			edge_kind="parent_clip_boundary",
 		)
 
 		target = output[
@@ -443,7 +562,15 @@ def build_composite(
 		"fine_pixels_written": written,
 		"core_vs_upsampled_base": finish_metrics(core_metrics),
 		"core_edge_vs_upsampled_base": finish_metrics(edge_metrics),
+		"source_coverage_seam_vs_upsampled_base": finish_metrics(
+			source_seam_metrics
+		),
+		"parent_clip_boundary_vs_upsampled_base": finish_metrics(
+			parent_clip_metrics
+		),
 		"core_edge_top_outliers": edge_outliers,
+		"source_coverage_seam_top_outliers": source_seam_outliers,
+		"parent_clip_boundary_top_outliers": parent_clip_outliers,
 	}
 
 	(output_dir / "report.json").write_text(
