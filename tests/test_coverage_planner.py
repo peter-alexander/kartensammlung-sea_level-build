@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from coverage_planner import (
 	decode_coverage_tile,
 	ground_resolution,
+	processing_recommendations,
 	recommended_zoom,
 	source_tier,
 	tile_bounds_lonlat,
@@ -42,6 +43,21 @@ def test_resolution_rules():
 
 	if source_tier(20.0)["automatic_tier"] != 1:
 		raise AssertionError("20m-Quelle soll keine automatische Verfeinerung auslösen.")
+
+	one_meter = processing_recommendations(
+		52.0,
+		tier_1m,
+		tier2_target_ground_resolution_m=12.0,
+		tier3_target_ground_resolution_m=6.0,
+	)
+	if one_meter["recommended_processing_zoom"] != 12:
+		raise AssertionError(
+			"1m-Quelle muss automatisch Tier 2 / Z12 bleiben."
+		)
+	if one_meter["tier3_candidate_processing_zoom"] != 13:
+		raise AssertionError(
+			"1m-Quelle soll Z13 nur als Tier-3-QA-Kandidat erhalten."
+		)
 
 	assert_close(
 		ground_resolution(52.0, 12),
