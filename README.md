@@ -10,15 +10,28 @@ Sliderwert.
 
 ## Aktueller Stand
 
-Der End-to-End-Prototyp für Hoek van Holland / Westland funktioniert:
+Die Pipeline funktioniert inzwischen hierarchisch end-to-end:
 
-- Mapterhorn-Terrarium-DEM,
-- 4er-Nachbarschaft,
-- vorberechneter Inundation Threshold,
-- Terrarium-PNG-Ausgabe,
-- Darstellung als MapLibre-`color-relief`.
+- Mapterhorn-Coverage-Planner,
+- globale/regionale Base,
+- automatische High-Resolution-Refinements,
+- Parent-Thresholds als Fine-Randbedingungen,
+- Transition Collar + Priority-Flood-Halo,
+- quantisierter 4er-Priority-Flood,
+- Merge Base + Fine,
+- gemeinsame Rasterpyramide,
+- PMTiles-Ausgabe.
 
-Nächster Schritt ist der Nordsee-Produktionspilot.
+Phase 1C für die westlichen Niederlande kombiniert eine Z11-Base mit einem
+automatisch erkannten AHN5-Z12-Refinement. Ein 128-Pixel-Transition-Collar
+reduziert die maximale gemessene Fine/Base-Seam-Abweichung von 14 m auf 4 m;
+kein getesteter Seam-Pixel unterscheidet sich noch um mehr als 5 m.
+
+Das resultierende Z6–Z12-PMTiles ist rund 10,8 MB groß und wurde erfolgreich
+verifiziert.
+
+Nächster Schritt ist der visuelle Test dieses zusammengesetzten Datensatzes in
+der Kartensammlung und danach die Skalierung auf ein größeres Parent-Gebiet.
 
 ## Struktur
 
