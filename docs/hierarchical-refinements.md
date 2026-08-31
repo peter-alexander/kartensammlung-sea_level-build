@@ -253,30 +253,121 @@ Ein Tier kann gleichzeitig:
 
 verwenden. Der jeweils beste Weg setzt sich durch die Relaxation durch.
 
+## Transition Collar zwischen Fine und Base
+
+Der erste zusammengesetzte Phase-1C-Build zeigte, dass ein Wechsel exakt an der
+Mapterhorn-Source-Coverage fachlich ungünstig sein kann.
+
+Ohne Übergangspuffer lagen einzelne Source-Grenzen direkt auf schmalen
+hydraulischen Strukturen oder Source-Lücken. Im westlichen Niederlande-Pilot
+ergab die Seam-QA:
+
+- 137.013 Randpixel,
+- 92,04 % exakt gleich,
+- mittlere absolute Differenz 0,0818 m,
+- maximale Differenz 14 m,
+- 0,0029 % der Randpixel >5 m Unterschied.
+
+Die Lösung ist ein **Transition Collar**:
+
+1. die echte High-Resolution-Source-Coverage wird als fachlicher Kern erkannt,
+2. dieser Kern wird in Web Mercator nach außen gepuffert,
+3. auch der Puffer wird auf Fine-Zoom gerechnet,
+4. erst am äußeren Pufferrand wird zurück auf die Base gewechselt,
+5. außerhalb des Fine-Puffers liefert Mapterhorn weiterhin sein aggregiertes
+   Fallback-Terrain.
+
+Damit liegt der Base/Fine-Wechsel nicht mehr zwingend auf einer Küstenlinie,
+einem Damm oder einer Source-Lücke.
+
+### Getestete Anfangsregel
+
+Phase 1C verwendet zunächst:
+
+`transition_buffer_pixels = 128`
+
+Bei Z12 entspricht das ungefähr 2,45 km in EPSG:3857 und in den Niederlanden
+grob 1,5 km Bodenentfernung.
+
+Der Priority-Flood-Halo bleibt davon getrennt:
+
+`halo_tiles = 1`
+
+Der Halo liegt außerhalb des veröffentlichten Refinement-Cores und dient weiterhin
+nur dazu, Parent-Randbedingungen vom sichtbaren Fine/Base-Übergang fernzuhalten.
+
+### Phase-1C-Ergebnis mit 128-Pixel-Collar
+
+- Fine-Workarea: 1.064 Z12-Tiles,
+- 121.261.545 Fine-Pixel im Composite,
+- gemeinsames Ausgaberaster: 358.612.992 Z12-Zellen,
+- fertiges PMTiles: rund 10,8 MB,
+- PMTiles-Verify erfolgreich.
+
+Echte Refinement-Seam gegen hochskalierte Z11-Base:
+
+| Kennzahl | ohne Collar | 128-Pixel-Collar |
+| --- | ---: | ---: |
+| exakt gleich | 92,04 % | **97,82 %** |
+| mittlere absolute Differenz | 0,0818 m | **0,0229 m** |
+| maximale Differenz | 14 m | **4 m** |
+| >1 m Unterschied | 0,1109 % | **0,0888 %** |
+| >2 m Unterschied | 0,0562 % | **0,0209 %** |
+| >5 m Unterschied | 0,0029 % | **0 %** |
+
+Der zuvor beobachtete 14-m-Ausreißer verschwindet vollständig aus der
+Refinement-Seam.
+
+128 Pixel werden deshalb für Phase 1C als **getestete Anfangsregel** übernommen.
+Die Größe ist kein universeller Naturwert und bleibt pro Region
+konfigurierbar/QA-pflichtig.
+
+## Coverage-Kontext
+
+Der Coverage Planner lädt nun standardmäßig zusätzlich einen kleinen räumlichen
+Kontext um die angeforderte Planungs-BBox.
+
+Ausgaben:
+
+- `sources.geojson`: auf das eigentliche Planungsgebiet zugeschnitten,
+- `sources-context.geojson`: Source-Geometrien mit zusätzlichem Kontext für
+  Refinement-Planung.
+
+Damit kann `prepare_refinement_region.py` unterscheiden zwischen:
+
+- echter Mapterhorn-Source-Grenze,
+- Transition Collar,
+- Parent-/Pilot-BBox-Clipping.
+
+Das verhindert, dass ein künstlicher Planungsrand als echte Source-Grenze
+fehlinterpretiert wird.
+
 ## Zusammensetzen der Ausgabe
 
-Für die spätere gemeinsame PMTiles-Ausgabe gilt:
+Für die gemeinsame PMTiles-Ausgabe gilt nun:
 
 1. Base-Threshold bildet die vollständige Fläche ab.
-2. Refinement wird mit Halo gerechnet.
-3. Nur der innere Refinement-Core überschreibt die Base-Zellen.
-4. Bei mehreren Refinement-Stufen gewinnt die feinste freigegebene Stufe.
-5. Tile-/Zoom-Pyramiden werden erst nach dem fachlichen Merge erzeugt.
+2. Source-Coverage bestimmt, wo ein Refinement fachlich sinnvoll ist.
+3. Ein konfigurierbarer Transition Collar erweitert den veröffentlichten
+   Fine-Core.
+4. Außerhalb des Cores liegt zusätzlich der Priority-Flood-Halo.
+5. Parent-Thresholds initialisieren den äußeren Fine-Work-Rand.
+6. Nur Core + Transition Collar überschreiben die Base-Zellen.
+7. Bei mehreren Refinement-Stufen gewinnt die feinste freigegebene Stufe.
+8. Tile-/Zoom-Pyramiden werden erst nach dem fachlichen Merge erzeugt.
 
 Damit gibt es in MapLibre weiterhin nur einen logischen
-`inundation_threshold`-Datensatz. Der Browser muss die Hierarchie nicht kennen.
+`inundation_threshold`-Datensatz. Der Browser muss weder Parent noch
+Refinement-Grenzen kennen.
 
-## Nächster Schritt
+## Aktueller Produktionsstand
 
-Der nächste produktive Schritt ist nicht mehr ein Algorithmustest, sondern der
-erste zusammengesetzte Build:
+Der erste vollständige hierarchische Phase-1C-Pilot funktioniert:
 
-- Phase-1B-/spätere Europa-Basis als Parent,
-- westliche Niederlande als ~12-m-Refinement,
-- Halo + Core,
-- Merge Base + Fine,
-- gemeinsame Rasterpyramide,
-- ein PMTiles-Archiv.
+`Mapterhorn Coverage → Z11 Base → AHN Z12 + Collar + Halo → Parent-Boundary → Fine Priority Flood → Composite → Z6–Z12-Pyramide → PMTiles`
 
-Danach kann die Kartensammlung erstmals einen hierarchisch zusammengesetzten
-Datensatz testen.
+Das resultierende PMTiles wurde erfolgreich verifiziert.
+
+Der nächste Schritt ist daher kein weiterer Algorithmus-Prototyp mehr, sondern
+der erste visuelle Test dieses zusammengesetzten Datensatzes in der
+Kartensammlung und anschließend die Planung eines größeren Parent-Gebiets.
