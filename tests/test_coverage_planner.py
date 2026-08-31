@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from coverage_planner import (
+	context_bounds_for_bbox,
 	decode_coverage_tile,
 	ground_resolution,
 	processing_recommendations,
@@ -75,6 +76,38 @@ def test_tile_bbox_exclusive():
 		raise AssertionError(f"expected one tile, got {tiles}")
 
 
+def test_context_bounds():
+	zoom = 8
+	west, south, east, north = tile_bounds_lonlat(130, 84, zoom)
+	context = context_bounds_for_bbox(
+		(west, south, east, north),
+		zoom,
+		1,
+	)
+
+	expected_west, _s, _e, expected_north = tile_bounds_lonlat(
+		129,
+		83,
+		zoom,
+	)
+	_w, expected_south, expected_east, _n = tile_bounds_lonlat(
+		131,
+		85,
+		zoom,
+	)
+
+	for actual, expected in zip(
+		context,
+		(
+			expected_west,
+			expected_south,
+			expected_east,
+			expected_north,
+		),
+	):
+		assert_close(actual, expected, tolerance=1e-6)
+
+
 def test_mvt_transform():
 	zoom = 8
 	x = 130
@@ -107,6 +140,7 @@ def test_mvt_transform():
 def main():
 	test_resolution_rules()
 	test_tile_bbox_exclusive()
+	test_context_bounds()
 	test_mvt_transform()
 	print("ok")
 
