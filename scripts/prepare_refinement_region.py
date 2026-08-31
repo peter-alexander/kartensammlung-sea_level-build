@@ -154,11 +154,22 @@ def prepare_region(
 		encoding="utf-8",
 	)
 
+	source_bounds = source_geometry.bounds
+	clipped_sides = {
+		"west": source_bounds[0] < target_bounds[0],
+		"south": source_bounds[1] < target_bounds[1],
+		"east": source_bounds[2] > target_bounds[2],
+		"north": source_bounds[3] > target_bounds[3],
+	}
+
 	core_feature = {
 		"type": "Feature",
 		"properties": {
 			"source": source,
 			"kind": "refinement-core",
+			"parent_target_bounds": list(target_bounds),
+			"source_coverage_bounds": list(source_bounds),
+			"clipped_sides": clipped_sides,
 		},
 		"geometry": mapping(core),
 	}
@@ -173,6 +184,9 @@ def prepare_region(
 		"fine_zoom": fine_zoom,
 		"halo_tiles": halo_tiles,
 		"core_bounds": list(core.bounds),
+		"source_coverage_bounds": list(source_bounds),
+		"parent_target_bounds": list(target_bounds),
+		"clipped_sides": clipped_sides,
 		"core_tile_range": {
 			"x": [x_min, x_max],
 			"y": [y_min, y_max],
