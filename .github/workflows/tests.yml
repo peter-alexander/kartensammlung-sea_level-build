@@ -35,3 +35,4 @@ jobs:
         run: |
           python tests/test_quantized_priority_flood.py
           python tests/test_threshold_pyramid.py
+          python tests/test_refinement_boundary.py
