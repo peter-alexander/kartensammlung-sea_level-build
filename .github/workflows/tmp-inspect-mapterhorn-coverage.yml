@@ -1,0 +1,64 @@
+name: Temporary inspect Mapterhorn coverage
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-inspect-mapterhorn-coverage.yml
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect current Mapterhorn metadata
+        run: |
+          set -euo pipefail
+
+          echo "=== coverage.pmtiles HEAD ==="
+          curl -fsSI https://download.mapterhorn.com/coverage.pmtiles
+
+          echo "=== coverage TileJSON ==="
+          curl -fsS https://single-archive-tiles.mapterhorn.com/coverage.json | \
+            python -m json.tool
+
+          echo "=== attribution first records ==="
+          curl -fsS https://download.mapterhorn.com/attribution.json > /tmp/attribution.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("/tmp/attribution.json").read_text())
+          print("count", len(data))
+          for item in data[:8]:
+              print(json.dumps(item, indent=2))
+          PY
+
+          echo "=== download_urls first records ==="
+          curl -fsS https://download.mapterhorn.com/download_urls.json > /tmp/download_urls.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("/tmp/download_urls.json").read_text())
+          print("top keys", sorted(data))
+          print("count", len(data.get("items", [])))
+          for item in data.get("items", [])[:8]:
+              print(json.dumps(item, indent=2))
+          PY
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-inspect-mapterhorn-coverage.yml
+          git commit -m "Remove temporary Mapterhorn coverage inspection workflow"
+          git push
