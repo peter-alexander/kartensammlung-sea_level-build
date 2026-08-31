@@ -1,11 +1,6 @@
 name: Phase 1C hierarchical composite
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/phase-1c-composite.yml
   workflow_dispatch:
 
 jobs:
