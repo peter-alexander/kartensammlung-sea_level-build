@@ -56,18 +56,12 @@ def downsample_bayer(array):
 	a11 = array[1::2, 1::2]
 
 	out_height, out_width = a00.shape
-	rows = np.arange(out_height, dtype=np.uint32)[:, None] & 1
-	cols = np.arange(out_width, dtype=np.uint32)[None, :] & 1
-
 	output = np.empty((out_height, out_width), dtype=np.uint8)
-	mask = (rows == 0) & (cols == 0)
-	output[mask] = a00[mask]
-	mask = (rows == 0) & (cols == 1)
-	output[mask] = a01[mask]
-	mask = (rows == 1) & (cols == 0)
-	output[mask] = a10[mask]
-	mask = (rows == 1) & (cols == 1)
-	output[mask] = a11[mask]
+
+	output[0::2, 0::2] = a00[0::2, 0::2]
+	output[0::2, 1::2] = a01[0::2, 1::2]
+	output[1::2, 0::2] = a10[1::2, 0::2]
+	output[1::2, 1::2] = a11[1::2, 1::2]
 
 	return output
 
