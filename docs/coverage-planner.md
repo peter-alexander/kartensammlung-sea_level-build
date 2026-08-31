@@ -14,289 +14,219 @@ Er beantwortet für ein Zielgebiet:
 - welche Lizenz und Attribution gelten,
 - welche Flächen ein automatisches Tier-2-Refinement rechtfertigen,
 - welche Quellen zusätzlich Tier-3-QA-Kandidaten sind,
-- welcher Web-Mercator-Processing-Zoom an der jeweiligen Breitenlage sinnvoll ist.
+- welcher Web-Mercator-Processing-Zoom aus Source-Auflösung und Breitenlage
+  sinnvoll ist.
 
-Die Refinement-Gebiete werden damit nicht mehr über Ländergrenzen oder eine
-manuell gepflegte Liste definiert.
+Die Refinement-Gebiete werden damit nicht über Ländergrenzen oder eine manuell
+gepflegte Liste definiert.
 
 ## Mapterhorn-Datenquellen
 
 ### Coverage-Geometrie
 
-Mapterhorn veröffentlicht:
+Mapterhorn veröffentlicht `coverage.pmtiles`. Der Planner verwendet den
+zugehörigen MVT-Endpunkt und lädt nur die Coverage-Kacheln, die das
+Planungsgebiet plus kleinen räumlichen Kontext schneiden.
 
-`https://download.mapterhorn.com/coverage.pmtiles`
-
-Die Datei ist ein Vector-PMTiles-Archiv. Die Coverage-Map verwendet daraus die
-Vector-Layer:
-
-`coverage`
-
-mit dem Attribut:
-
-`source`
-
-Die Coverage ist derzeit bis Zoom 14 verfügbar.
-
-Der Planner lädt nicht das vollständige Coverage-PMTiles-Archiv. Er verwendet den
-von Mapterhorn bereitgestellten TileJSON-/MVT-Endpunkt und lädt nur die
-Coverage-Kacheln, die das gewünschte Planungsgebiet schneiden.
+Die Coverage-Features tragen das Attribut `source`.
 
 ### Attribution
 
-`https://download.mapterhorn.com/attribution.json`
+`attribution.json` enthält pro Quelle unter anderem:
 
-enthält pro Quelle unter anderem:
+- Source-Name,
+- Datensatzname,
+- native Auflösung,
+- Lizenz,
+- Produzent,
+- Website,
+- Zugriffsjahr.
 
-- `source`,
-- `name`,
-- `resolution`,
-- `license`,
-- `producer`,
-- `website`,
-- `access_year`.
-
-Damit kann die Source-Coverage direkt mit der nativen Datenauflösung und der
-Attribution verbunden werden.
-
-Stand 31. August 2026 enthält die Datei 148 Quellen.
+Damit kann die geometrische Coverage unmittelbar mit der nativen
+DEM-Auflösung verbunden werden.
 
 ### Terrain-Archive
 
-`https://download.mapterhorn.com/download_urls.json`
-
-listet:
+`download_urls.json` listet:
 
 - `planet.pmtiles` für Zoom 0–12,
 - regionale Archive für Zoom 13+,
-- Bounding Boxes,
-- Min-/Maxzoom,
-- Dateigröße,
-- MD5.
+- Bounds, Min-/Maxzoom und Dateigrößen.
 
-Die regionalen Z13+-Archive werden vom Planner derzeit nur informativ gemeldet.
+Z13+ ist nicht mehr ausschließlich eine Tier-3-Sonderstufe. Der V2-Benchmark
+zeigt, dass auch ein automatisches Tier-2-Refinement einer nativen 5-m-Quelle
+Z13 benötigen kann.
 
-Für das automatische Tier-2-Ziel von ungefähr 10–15 m reicht bei unseren
-europäischen Küstenregionen in der Regel Z12 und damit das normale
-Mapterhorn-Terrain bis Z12.
+Der Planner meldet deshalb die schneidenden High-Resolution-Archive weiterhin
+mit. Für großflächige Builds muss später je Region entschieden werden, ob viele
+Einzelrequests oder ein passendes regionales Archiv effizienter sind.
 
-Tier-3-QA auf ungefähr 5–6 m benötigt dagegen typischerweise Z13 und damit die
-regionalen High-Resolution-Archive bzw. den entsprechenden Tile-Endpunkt.
+## Priorität überlappender Quellen
 
-## Priorität überlappender Mapterhorn-Quellen
+Mapterhorn priorisiert seine Terrain-Quellen nach der eigenen
+Aggregationslogik. Für den Flood-Build verwenden wir das bereits aggregierte
+Mapterhorn-Terrain.
 
-Die Mapterhorn-Aggregationspipeline priorisiert Quellen nach:
+Der Coverage Planner muss diese Verschneidung deshalb nicht nachbauen. Er nutzt
+die Source-Coverages für die Entscheidung, **wo** und **wie fein** ein
+Refinement sinnvoll ist.
 
-1. höherem lokalem Maxzoom,
-2. bei gleichem Maxzoom lexikographisch früherem Source-Namen.
-
-Mapterhorn verschneidet die Quellen anschließend und füllt NoData-Bereiche mit
-nachrangigen Quellen. An Source-Grenzen wird ein begrenztes Seam-Smoothing
-angewendet.
-
-Für unsere aktuelle Planung müssen wir diese Priorisierung nicht vollständig
-reimplementieren, weil der eigentliche Flood-Build das bereits aggregierte
-Mapterhorn-Terrain verwendet.
-
-Der Planner behält deshalb alle im Gebiet vorkommenden Source-Coverages bei und
-entscheidet nur, ob ihre native Auflösung ein Refinement rechtfertigt.
-
-## Aktuelle Planungsregeln
-
-Die Regeln sind CLI-Parameter und damit bewusst veränderbar.
+## Planungsregeln
 
 ### Tier 1 – Base
 
+Die globale/regionale Basis bleibt ungefähr in der Größenordnung der globalen
+~30-m-Quelle.
+
 Ziel:
 
-ungefähr 30 m Bodenauflösung.
+`~30 m ground resolution`
 
 Der konkrete Web-Mercator-Zoom wird aus der geographischen Breite berechnet.
 
-Ein fixer globaler Zoom ist ungeeignet, weil die reale Bodenauflösung eines
-Web-Mercator-Pixels mit der Breite variiert.
-
 ### Tier 2 – automatisch
 
-Eine Source wird automatisch Tier 2, wenn:
+Eine Source wird Tier 2, wenn:
 
 `native_resolution <= 10 m`
 
-Ziel:
+Die Zielauflösung ist source-abhängig:
 
-`~12 m ground resolution`
+`target_ground_resolution = max(native_resolution, 6 m)`
 
-Der nächstliegende Web-Mercator-Zoom wird automatisch berechnet.
+Anschließend wird der nächstliegende Web-Mercator-Zoom aus Zielauflösung und
+Breitenlage bestimmt.
 
-Beispiel Niederlande:
+Beispiele bei ungefähr 52° N:
 
-- Source: `nlahn5lowresfilled`
-- AHN5 DTM 5 m
-- automatisches Tier 2
-- bei ungefähr 52° N: Z12
-- reale Bodenauflösung ungefähr 11,7 m.
+| native Source | automatisches Ziel | Zoom | Bodenpixel |
+| ---: | ---: | ---: | ---: |
+| 10 m | 10 m | Z12 | ~11,8 m |
+| 5 m | 6 m | Z13 | ~5,9 m |
+| 1 m | 6 m | Z13 | ~5,9 m |
+| 0,5 m | 6 m | Z13 | ~5,9 m |
 
-### Tier 3 – nur QA-Kandidat
+Damit wird eine 5-m-Quelle nicht unnötig auf ~12 m vergröbert. Gleichzeitig
+führt eine 0,5- oder 1-m-Quelle nicht automatisch zu einem 1-m-Arbeitsraster.
+
+### Warum AHN5 jetzt Z13 erhält
+
+Der historische V1-Benchmark verwendete 1-m-Thresholdklassen. Darin erschien
+Z12 gegenüber Z13 sehr ähnlich.
+
+Der neue V2-Benchmark verwendet die tatsächlichen 58 Sliderklassen. Dabei
+zeigen alle sechs Stichpunkte im Hoek-/Rotterdam-Gebiet denselben kritischen
+Connectivity-Threshold:
+
+| Processing | Threshold |
+| ---: | ---: |
+| Z11 | 3,5 m |
+| Z12 | 3,75 m |
+| Z13 | 4,0 m |
+
+Bei **3,75 m** unterscheiden sich Z12 und Z13 bei **44,300326 %** der
+Benchmarkzellen im Zustand `threshold <= slider`.
+
+Das ist kein allgemeiner 44-%-Fehler. Eine einzelne hydraulisch entscheidende
+Barriere wird bei Z12 um eine 0,25-m-Stufe zu niedrig abgebildet und öffnet
+dadurch eine große zusammenhängende Polderfläche zu früh.
+
+Für AHN5 5 m ist Z13 daher die fachlich passende automatische Stufe.
+
+### Tier 3 – QA-Kandidat
 
 Eine Source wird zusätzlich Tier-3-Kandidat, wenn:
 
 `native_resolution <= 2 m`
 
-Ziel für einen späteren Vergleich:
+QA-Ziel:
 
-`~6 m ground resolution`
+`target_ground_resolution = max(native_resolution, 3 m)`
 
-Wichtig:
+Bei ungefähr 52° N entspricht das für sehr feine Sources typischerweise Z14 /
+~2,9 m Bodenpixel.
 
-**Tier 3 wird nicht automatisch gebaut.**
+Tier 3 wird **nicht automatisch produziert**. Es dient nur als regionaler
+Vergleich, wenn schmale Deiche, Dämme oder ähnliche Strukturen selbst bei der
+automatischen ~6-m-Stufe noch relevant verloren gehen.
 
-Eine 0,5- oder 1-m-Quelle führt also im normalen Produktionsplan weiterhin nur
-zu einem ungefähr 12-m-Tier-2-Refinement.
+## Reale Validierung der neuen Regel
 
-Die ungefähr 6-m-Stufe wird erst verwendet, wenn ein regionaler Benchmark zeigt,
-dass sie gegenüber Tier 2 einen fachlich relevanten Connectivity-Gewinn liefert.
+Der Planner wurde gegen die aktuelle westliche Niederlande-Coverage geprüft.
 
-Damit bleibt die Auflösungsentscheidung konsistent mit dem
-Hoek-van-Holland-Benchmark.
+Für `nlahn5lowresfilled` liefert der reale Plan:
+
+- Name: Actueel Hoogtebestand Nederland, AHN5 5m,
+- native Auflösung: 5,0 m,
+- automatisches Tier: 2,
+- Ziel-Bodenauflösung: 6,0 m,
+- Processing-Zoom: **Z13**,
+- resultierende Bodenauflösung im Source-Gebiet: **5,973 m**,
+- `requires_z13_plus = true`.
+
+Damit ist die Source→Zoom-Regel nicht nur synthetisch getestet, sondern mit der
+aktuellen Mapterhorn-Coverage bestätigt.
 
 ## Ausgaben
 
 `scripts/coverage_planner.py` erzeugt:
 
-### `plan.json`
+- `plan.json`: Regeln, Sources, Metadaten, Zielauflösungen und Zooms,
+- `sources.geojson`: Source-Coverages im Zielgebiet,
+- `sources-context.geojson`: Coverage mit zusätzlichem Planungskontext,
+- `tier2.geojson`: vereinigte automatische Tier-2-Coverage,
+- `tier3-candidates.geojson`: vereinigte Tier-3-QA-Coverage.
 
-Enthält:
+Planner-Schema V3 speichert zusätzlich:
 
-- Bounding Box,
-- Planner-Regeln,
-- Base-Empfehlung,
-- alle erkannten Quellen,
-- Source-Metadaten,
-- automatische Tier-Einstufung,
-- empfohlene Processing-Zooms,
-- Tier-3-QA-Zooms,
-- betroffene High-Resolution-Archive.
+- `recommended_target_ground_resolution_m`,
+- `recommended_processing_zoom`,
+- `recommended_ground_resolution_m`,
+- `requires_z13_plus`,
+- entsprechende Tier-3-QA-Zielwerte.
 
-### `sources.geojson`
+## Nordsee-Kontext
 
-Exakte innerhalb des Planungsgebiets rekonstruierte Mapterhorn-Coverage pro Source
-mit den relevanten Metadaten.
+Der frühere Nordsee-Plan erkannte zahlreiche hochauflösende nationale Quellen
+und große Z13+-Archive. Die damals dokumentierte Aussage „automatisches Tier 2
+ist grundsätzlich Z12“ ist mit V3 überholt.
 
-### `tier2.geojson`
+Beispiele:
 
-Vereinigte Coverage aller automatischen Tier-2-Quellen.
-
-### `tier3-candidates.geojson`
-
-Vereinigte Coverage aller Tier-3-QA-Kandidaten.
-
-## Erster realer Nordsee-Plan
-
-Planungsgebiet:
-
-`-2.5,49.5,13.0,58.0`
-
-Coverage-Zoom:
-
-Z8.
-
-Ergebnis:
-
-- 132 benötigte Coverage-MVT-Kacheln,
-- 31 erkannte DEM-Quellen,
-- 30 Tier-2-fähige Quellen,
-- 27 Tier-3-QA-Kandidaten,
-- 11 räumlich schneidende Z13+-Mapterhorn-Archive.
-
-Die Summe der vollständigen schneidenden High-Resolution-Archive beträgt rund
-1,19 TB. Diese Zahl ist **keine notwendige Downloadmenge für Tier 2**. Sie zeigt
-nur, wie groß die vollständigen Z13+-Archive sind, deren Bounding Box das
-Planungsgebiet schneidet.
-
-Für den normalen Z12-Tier-2-Build werden diese Archive nicht komplett
-heruntergeladen.
-
-## Erkannte Beispiele im Nordsee-Plan
-
-### Niederlande
-
-`nlahn5lowresfilled`
-
-- AHN5 DTM,
-- 5 m,
-- CC BY 4.0,
-- automatisch Tier 2,
-- Z12,
-- ungefähr 11,74 m Bodenpixel.
-
-### Dänemark
-
-`dk`
-
-- 0,4 m,
-- automatisch Tier 2 auf ungefähr 12 m,
-- zusätzlich Tier-3-QA-Kandidat auf ungefähr 6 m.
-
-### Deutschland
-
-Mehrere Länder-DTMs mit ungefähr 0,25–1 m werden erkannt.
-
-Sie werden trotz der sehr feinen Quelldaten **nicht automatisch auf ihre native
-Auflösung oder Z13 hochgerechnet**.
-
-### England / Schottland
-
-Hochauflösende Quellen werden ebenfalls erkannt und nach derselben Regel
-eingestuft.
+- Niederlande, AHN5 5 m → automatisch ungefähr 6 m / Z13,
+- Dänemark 0,4 m → automatisch ungefähr 6 m; zusätzlich ~3-m-QA-Kandidat,
+- deutsche 0,25–1-m-Sources → ebenfalls nicht native Auflösung, sondern
+  automatisch mindestens ungefähr 6 m.
 
 ## Verbindung mit der Buildpipeline
 
-Der nächste Verarbeitungsschritt ist:
+Nach dem Planner folgt:
 
-`scripts/prepare_refinement_region.py`
+1. `prepare_refinement_region.py` – Source-Coverage, Core, Collar und Workarea,
+2. `build_refinement_boundary.py` – Parent-Thresholds auf Fine-Rand,
+3. `priority_flood_quantized` – Fine-Threshold,
+4. `build_composite_threshold.py` – Fine-Core überschreibt Base,
+5. `build_threshold_pyramid.py` – gemeinsame Rasterpyramide,
+6. PMTiles-Ausgabe.
 
-Er nimmt eine konkrete Source aus `sources.geojson` und:
-
-1. schneidet deren Coverage mit dem Parent-Gebiet,
-2. bestimmt den Fine-Tilebereich,
-3. fügt einen konfigurierbaren Halo hinzu,
-4. begrenzt die Workarea auf den Parent,
-5. erzeugt eine Fine-Build-Konfiguration,
-6. speichert die exakte Core-Geometrie für den späteren Merge.
-
-Danach folgen:
-
-`build_refinement_boundary.py`
-
-→ Parent-Threshold auf Fine-Rand
-
-`priority_flood_quantized`
-
-→ Fine-Threshold
-
-`build_composite_threshold.py`
-
-→ Fine-Core überschreibt Base
-
-`build_threshold_pyramid.py`
-
-→ gemeinsame Rasterpyramide
-
-→ PMTiles.
+Ein wichtiges Folgeproblem der Source-abhängigen Zooms ist bereits identifiziert:
+Der bisherige Transition Collar wird in Fine-Pixeln und der Halo in Fine-Tiles
+angegeben. Bei einem Zoomwechsel ändern sich damit ihre physischen Breiten.
+Vor dem ersten großen Z13-Composite werden diese Parameter deshalb auf
+zoomunabhängig vergleichbare Distanzen umgestellt.
 
 ## Reproduzierbarkeit
 
-Ein Produktionsbuild sollte zusammen mit seinem Threshold-Datensatz speichern:
+Ein Produktionsbuild speichert mindestens:
 
-- verwendete Planner-Regeln,
-- Coverage-Zoom,
-- `attribution.json`-Stand bzw. relevante Source-Metadaten,
-- `download_urls.json`-Version,
-- Mapterhorn-Source-Namen,
-- Source-Coverage-Geometrien,
-- Processing-Zooms,
-- Halo-Größen,
+- Planner-Regeln und Schema-Version,
+- Coverage-Zoom und Source-Geometrien,
+- relevante Attribution-/Source-Metadaten,
+- native Source-Auflösung,
+- Ziel-Bodenauflösung und Processing-Zoom,
+- betroffene Z13+-Archive,
+- Collar-/Halo-Parameter,
 - Parent-/Fine-Buildmetadaten.
 
-Damit bleibt nachvollziehbar, warum ein Gebiet zu einem bestimmten Zeitpunkt mit
-einer bestimmten Auflösung gerechnet wurde.
+Damit bleibt nachvollziehbar, warum eine Region zu einem bestimmten Zeitpunkt
+mit einer bestimmten Auflösung gerechnet wurde.

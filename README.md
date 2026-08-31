@@ -54,9 +54,21 @@ Die numerische Klassenauflösung ist nicht mit der regional tatsächlich
 verfügbaren DEM-Genauigkeit gleichzusetzen; diese hängt von der jeweiligen Quelle
 ab.
 
-Nächster Schritt ist der visuelle Test des V2-Composites in der Kartensammlung.
-Danach wird der Z11/Z12/Z13-Auflösungsbenchmark mit V2 wiederholt, bevor die
-automatische Coverage→Processing-Zoom-Regel endgültig festgelegt wird.
+Der visuelle Test des V2-Composites in der Kartensammlung ist bestanden. Der
+anschließende Z11/Z12/Z13-V2-Benchmark hat die frühere Z12-Empfehlung für AHN5
+revidiert: Im Hoek-/Rotterdam-Test öffnet Z12 eine große Polderfläche bereits bei
+3,75 m, Z13 erst bei 4,0 m. Bei 3,75 m unterscheiden sich 44,300326 % der
+Benchmarkzellen im sichtbaren Überflutungszustand.
+
+Der Coverage Planner verwendet deshalb jetzt eine source-abhängige Auflösung:
+
+- Tier 2: `target = max(native_source_resolution, 6 m)`,
+- Tier 3 QA: `target = max(native_source_resolution, 3 m)` für Sources <=2 m.
+
+Für AHN5 5 m ergibt das bei ungefähr 52° N automatisch Z13 / rund 5,9 m
+Bodenpixel. Vor dem nächsten großen Z13-Composite werden Transition Collar und
+Priority-Flood-Halo noch von zoomabhängigen Pixel-/Tilewerten auf physisch
+vergleichbare Breiten umgestellt.
 
 ## Struktur
 
