@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 
 
-CONFIG_PATH = Path(__file__).with_name("north_sea_pilot.json")
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "north_sea_pilot.json"
 EARTH_RADIUS = 6378137.0
 WORLD_METERS = 2.0 * math.pi * EARTH_RADIUS
 
