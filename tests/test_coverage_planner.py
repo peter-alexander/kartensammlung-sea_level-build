@@ -32,9 +32,39 @@ def assert_close(actual, expected, tolerance=1e-6):
 def test_resolution_rules():
 	if recommended_zoom(52.0, 12.0) != 12:
 		raise AssertionError("52°N / 12m muss ungefähr Z12 ergeben.")
+	if recommended_zoom(52.0, 6.0) != 13:
+		raise AssertionError("52°N / 6m muss ungefähr Z13 ergeben.")
+	if recommended_zoom(52.0, 3.0) != 14:
+		raise AssertionError("52°N / 3m muss ungefähr Z14 ergeben.")
 
-	if source_tier(5.0)["automatic_tier"] != 2:
+	tier_5m = source_tier(5.0)
+	if tier_5m["automatic_tier"] != 2:
 		raise AssertionError("5m-Quelle muss Tier 2 sein.")
+
+	five_meter = processing_recommendations(
+		52.0,
+		tier_5m,
+		5.0,
+	)
+	if five_meter["recommended_target_ground_resolution_m"] != 6.0:
+		raise AssertionError(five_meter)
+	if five_meter["recommended_processing_zoom"] != 13:
+		raise AssertionError(
+			"5m-Quelle muss bei 52°N automatisch ungefähr Z13 erhalten."
+		)
+
+	tier_10m = source_tier(10.0)
+	ten_meter = processing_recommendations(
+		52.0,
+		tier_10m,
+		10.0,
+	)
+	if ten_meter["recommended_target_ground_resolution_m"] != 10.0:
+		raise AssertionError(ten_meter)
+	if ten_meter["recommended_processing_zoom"] != 12:
+		raise AssertionError(
+			"10m-Quelle muss bei 52°N ungefähr Z12 erhalten."
+		)
 
 	tier_1m = source_tier(1.0)
 	if tier_1m["automatic_tier"] != 2:
@@ -42,27 +72,33 @@ def test_resolution_rules():
 	if not tier_1m["tier3_candidate"]:
 		raise AssertionError("1m-Quelle muss Tier-3-QA-Kandidat sein.")
 
-	if source_tier(20.0)["automatic_tier"] != 1:
-		raise AssertionError("20m-Quelle soll keine automatische Verfeinerung auslösen.")
-
 	one_meter = processing_recommendations(
 		52.0,
 		tier_1m,
-		tier2_target_ground_resolution_m=12.0,
-		tier3_target_ground_resolution_m=6.0,
+		1.0,
 	)
-	if one_meter["recommended_processing_zoom"] != 12:
+	if one_meter["recommended_processing_zoom"] != 13:
 		raise AssertionError(
-			"1m-Quelle muss automatisch Tier 2 / Z12 bleiben."
+			"1m-Quelle darf automatisch nicht feiner als ungefähr 6m werden."
 		)
-	if one_meter["tier3_candidate_processing_zoom"] != 13:
+	if one_meter["tier3_candidate_processing_zoom"] != 14:
 		raise AssertionError(
-			"1m-Quelle soll Z13 nur als Tier-3-QA-Kandidat erhalten."
+			"1m-Quelle soll ungefähr 3m nur als Tier-3-QA-Kandidat erhalten."
+		)
+
+	if source_tier(20.0)["automatic_tier"] != 1:
+		raise AssertionError(
+			"20m-Quelle soll keine automatische Verfeinerung auslösen."
 		)
 
 	assert_close(
 		ground_resolution(52.0, 12),
 		11.765,
+		tolerance=0.05,
+	)
+	assert_close(
+		ground_resolution(52.0, 13),
+		5.883,
 		tolerance=0.05,
 	)
 

@@ -297,28 +297,49 @@ def source_tier(
 def processing_recommendations(
 	latitude,
 	tier,
+	source_resolution,
 	*,
-	tier2_target_ground_resolution_m=12.0,
-	tier3_target_ground_resolution_m=6.0,
+	tier2_min_target_ground_resolution_m=6.0,
+	tier3_min_target_ground_resolution_m=3.0,
 ):
+	source_resolution = (
+		float(source_resolution)
+		if source_resolution is not None
+		else None
+	)
+
+	automatic_target = None
 	automatic_processing_zoom = None
 	automatic_ground = None
 	if tier["automatic_tier"] == 2:
+		automatic_target = max(
+			source_resolution
+			if source_resolution is not None
+			else tier2_min_target_ground_resolution_m,
+			tier2_min_target_ground_resolution_m,
+		)
 		automatic_processing_zoom = recommended_zoom(
 			latitude,
-			tier2_target_ground_resolution_m,
+			automatic_target,
 		)
 		automatic_ground = ground_resolution(
 			latitude,
 			automatic_processing_zoom,
 		)
 
+	tier3_target = None
 	tier3_processing_zoom = None
 	tier3_ground = None
 	if tier["tier3_candidate"]:
+		tier3_target = max(
+			source_resolution
+			if source_resolution is not None
+			else tier3_min_target_ground_resolution_m,
+			tier3_min_target_ground_resolution_m,
+		)
 		tier3_processing_zoom = recommended_zoom(
 			latitude,
-			tier3_target_ground_resolution_m,
+			tier3_target,
 		)
 		tier3_ground = ground_resolution(
 			latitude,
@@ -326,10 +347,24 @@ def processing_recommendations(
 		)
 
 	return {
+		"recommended_target_ground_resolution_m": (
+			round(automatic_target, 3)
+			if automatic_target is not None
+			else None
+		),
 		"recommended_processing_zoom": automatic_processing_zoom,
 		"recommended_ground_resolution_m": (
 			round(automatic_ground, 3)
 			if automatic_ground is not None
+			else None
+		),
+		"requires_z13_plus": (
+			automatic_processing_zoom is not None
+			and automatic_processing_zoom >= 13
+		),
+		"tier3_candidate_target_ground_resolution_m": (
+			round(tier3_target, 3)
+			if tier3_target is not None
 			else None
 		),
 		"tier3_candidate_processing_zoom": tier3_processing_zoom,
@@ -418,11 +453,18 @@ def geometry_feature(source, geometry, metadata, planning):
 		"access_year": metadata.get("access_year"),
 		"automatic_tier": planning.get("automatic_tier"),
 		"tier3_candidate": planning.get("tier3_candidate"),
+		"recommended_target_ground_resolution_m": planning.get(
+			"recommended_target_ground_resolution_m"
+		),
 		"recommended_processing_zoom": planning.get(
 			"recommended_processing_zoom"
 		),
 		"recommended_ground_resolution_m": planning.get(
 			"recommended_ground_resolution_m"
+		),
+		"requires_z13_plus": planning.get("requires_z13_plus"),
+		"tier3_candidate_target_ground_resolution_m": planning.get(
+			"tier3_candidate_target_ground_resolution_m"
 		),
 		"tier3_candidate_processing_zoom": planning.get(
 			"tier3_candidate_processing_zoom"
@@ -460,8 +502,8 @@ def plan(
 	tier2_max_source_resolution_m=10.0,
 	tier3_max_source_resolution_m=2.0,
 	base_target_ground_resolution_m=30.0,
-	tier2_target_ground_resolution_m=12.0,
-	tier3_target_ground_resolution_m=6.0,
+	tier2_min_target_ground_resolution_m=6.0,
+	tier3_min_target_ground_resolution_m=3.0,
 	attribution_url=DEFAULT_ATTRIBUTION_URL,
 	download_urls_url=DEFAULT_DOWNLOAD_URLS_URL,
 	coverage_tile_url=DEFAULT_COVERAGE_TILE_URL,
@@ -525,11 +567,12 @@ def plan(
 		recommendations = processing_recommendations(
 			centroid_lat,
 			tier,
-			tier2_target_ground_resolution_m=(
-				tier2_target_ground_resolution_m
+			resolution,
+			tier2_min_target_ground_resolution_m=(
+				tier2_min_target_ground_resolution_m
 			),
-			tier3_target_ground_resolution_m=(
-				tier3_target_ground_resolution_m
+			tier3_min_target_ground_resolution_m=(
+				tier3_min_target_ground_resolution_m
 			),
 		)
 
@@ -590,7 +633,7 @@ def plan(
 	archives = intersecting_archives(download_data, bounds)
 
 	result = {
-		"schema_version": 2,
+		"schema_version": 3,
 		"generated_at": datetime.now(timezone.utc).isoformat(),
 		"bounds": list(bounds),
 		"coverage": {
@@ -618,14 +661,22 @@ def plan(
 			"tier2_max_source_resolution_m": (
 				tier2_max_source_resolution_m
 			),
-			"tier2_target_ground_resolution_m": (
-				tier2_target_ground_resolution_m
+			"tier2_min_target_ground_resolution_m": (
+				tier2_min_target_ground_resolution_m
+			),
+			"tier2_target_rule": (
+				"max(native_source_resolution_m, "
+				"tier2_min_target_ground_resolution_m)"
 			),
 			"tier3_max_source_resolution_m": (
 				tier3_max_source_resolution_m
 			),
-			"tier3_target_ground_resolution_m": (
-				tier3_target_ground_resolution_m
+			"tier3_min_target_ground_resolution_m": (
+				tier3_min_target_ground_resolution_m
+			),
+			"tier3_target_rule": (
+				"max(native_source_resolution_m, "
+				"tier3_min_target_ground_resolution_m)"
 			),
 			"tier3_policy": "QA candidate only; not automatic build",
 		},
@@ -653,8 +704,9 @@ def plan(
 		},
 		"high_resolution_archives": {
 			"purpose": (
-				"informational for z13+ / Tier-3 QA; "
-				"automatic Tier 2 uses Mapterhorn z0-z12"
+				"informational for source-aware refinements whose "
+				"recommended processing zoom is z13+; bulk production "
+				"may require regional high-resolution archives"
 			),
 			"count": len(archives),
 			"total_bytes": sum(int(item.get("size", 0)) for item in archives),
@@ -700,14 +752,14 @@ def main():
 		default=30.0,
 	)
 	parser.add_argument(
-		"--tier2-target-resolution",
-		type=float,
-		default=12.0,
-	)
-	parser.add_argument(
-		"--tier3-target-resolution",
+		"--tier2-min-target-resolution",
 		type=float,
 		default=6.0,
+	)
+	parser.add_argument(
+		"--tier3-min-target-resolution",
+		type=float,
+		default=3.0,
 	)
 	args = parser.parse_args()
 
@@ -726,8 +778,12 @@ def main():
 		tier2_max_source_resolution_m=args.tier2_max_source_resolution,
 		tier3_max_source_resolution_m=args.tier3_max_source_resolution,
 		base_target_ground_resolution_m=args.base_target_resolution,
-		tier2_target_ground_resolution_m=args.tier2_target_resolution,
-		tier3_target_ground_resolution_m=args.tier3_target_resolution,
+		tier2_min_target_ground_resolution_m=(
+			args.tier2_min_target_resolution
+		),
+		tier3_min_target_ground_resolution_m=(
+			args.tier3_min_target_resolution
+		),
 		cache_dir=args.cache_dir,
 		workers=args.workers,
 	)
