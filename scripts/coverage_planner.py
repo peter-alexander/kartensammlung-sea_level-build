@@ -83,6 +83,37 @@ def tiles_for_bbox(bounds, zoom):
 	]
 
 
+def context_bounds_for_bbox(bounds, zoom, context_tiles):
+	if context_tiles < 0:
+		raise ValueError("context_tiles muss >= 0 sein.")
+
+	tiles = tiles_for_bbox(bounds, zoom)
+	if not tiles:
+		raise ValueError("BBox ergibt keine Coverage-Tiles.")
+
+	n = 2 ** zoom
+	x_values = [tile[0] for tile in tiles]
+	y_values = [tile[1] for tile in tiles]
+
+	x_min = max(0, min(x_values) - context_tiles)
+	x_max = min(n - 1, max(x_values) + context_tiles)
+	y_min = max(0, min(y_values) - context_tiles)
+	y_max = min(n - 1, max(y_values) + context_tiles)
+
+	west, _south, _east, north = tile_bounds_lonlat(
+		x_min,
+		y_min,
+		zoom,
+	)
+	_west, south, east, _north = tile_bounds_lonlat(
+		x_max,
+		y_max,
+		zoom,
+	)
+
+	return (west, south, east, north)
+
+
 def tile_bounds_lonlat(x, y, zoom):
 	n = 2 ** zoom
 
@@ -425,6 +456,7 @@ def plan(
 	bounds,
 	*,
 	coverage_zoom=8,
+	coverage_context_tiles=1,
 	tier2_max_source_resolution_m=10.0,
 	tier3_max_source_resolution_m=2.0,
 	base_target_ground_resolution_m=30.0,
@@ -443,13 +475,28 @@ def plan(
 		for item in attribution
 	}
 
-	coverage, tiles = collect_coverage(
+	context_bounds = context_bounds_for_bbox(
 		bounds,
+		coverage_zoom,
+		coverage_context_tiles,
+	)
+	context_coverage, context_tiles = collect_coverage(
+		context_bounds,
 		coverage_zoom,
 		tile_url=coverage_tile_url,
 		cache_dir=cache_dir,
 		workers=workers,
 	)
+
+	target = box(*bounds)
+	coverage = {}
+	for source, geometry in context_coverage.items():
+		clipped = geometry.intersection(target)
+		if clipped.is_empty:
+			continue
+		coverage[source] = clipped
+
+	requested_tiles = tiles_for_bbox(bounds, coverage_zoom)
 
 	center_lat = (bounds[1] + bounds[3]) / 2.0
 	base_zoom = recommended_zoom(
@@ -460,6 +507,7 @@ def plan(
 
 	source_records = []
 	source_features = []
+	source_context_features = []
 	tier2_geometries = []
 	tier3_geometries = []
 
@@ -512,6 +560,17 @@ def plan(
 			)
 		)
 
+		context_geometry = context_coverage.get(source)
+		if context_geometry is not None and not context_geometry.is_empty:
+			source_context_features.append(
+				geometry_feature(
+					source,
+					context_geometry,
+					metadata,
+					planning,
+				)
+			)
+
 		if tier["automatic_tier"] == 2:
 			tier2_geometries.append(geometry)
 		if tier["tier3_candidate"]:
@@ -536,7 +595,10 @@ def plan(
 		"bounds": list(bounds),
 		"coverage": {
 			"zoom": coverage_zoom,
-			"tile_count": len(tiles),
+			"requested_tile_count": len(requested_tiles),
+			"context_tiles": coverage_context_tiles,
+			"context_tile_count": len(context_tiles),
+			"context_bounds": list(context_bounds),
 			"tile_url": coverage_tile_url,
 			"source_count": len(source_records),
 		},
@@ -603,6 +665,7 @@ def plan(
 	return {
 		"plan": result,
 		"source_features": source_features,
+		"source_context_features": source_context_features,
 		"tier2_union": tier2_union,
 		"tier3_union": tier3_union,
 	}
@@ -618,6 +681,7 @@ def main():
 	parser.add_argument("--bbox", type=parse_bbox, required=True)
 	parser.add_argument("--output-dir", required=True)
 	parser.add_argument("--coverage-zoom", type=int, default=8)
+	parser.add_argument("--coverage-context-tiles", type=int, default=1)
 	parser.add_argument("--cache-dir", default="cache")
 	parser.add_argument("--workers", type=int, default=12)
 	parser.add_argument(
@@ -649,6 +713,8 @@ def main():
 
 	if args.coverage_zoom < 0 or args.coverage_zoom > 14:
 		parser.error("--coverage-zoom muss zwischen 0 und 14 liegen.")
+	if args.coverage_context_tiles < 0:
+		parser.error("--coverage-context-tiles muss >= 0 sein.")
 
 	output_dir = Path(args.output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
@@ -656,6 +722,7 @@ def main():
 	result = plan(
 		args.bbox,
 		coverage_zoom=args.coverage_zoom,
+		coverage_context_tiles=args.coverage_context_tiles,
 		tier2_max_source_resolution_m=args.tier2_max_source_resolution,
 		tier3_max_source_resolution_m=args.tier3_max_source_resolution,
 		base_target_ground_resolution_m=args.base_target_resolution,
@@ -673,6 +740,10 @@ def main():
 	write_geojson(
 		output_dir / "sources.geojson",
 		result["source_features"],
+	)
+	write_geojson(
+		output_dir / "sources-context.geojson",
+		result["source_context_features"],
 	)
 
 	for name, geometry in (
