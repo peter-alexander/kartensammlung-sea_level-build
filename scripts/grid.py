@@ -18,6 +18,14 @@ def lat_to_tile_y(lat, zoom):
 	) / 2.0 * (2 ** zoom)
 
 
+def _inclusive_min_tile(value):
+	nearest = round(value)
+	if math.isclose(value, nearest, rel_tol=0.0, abs_tol=1e-10):
+		return int(nearest)
+
+	return math.floor(value)
+
+
 def _exclusive_max_tile(value):
 	nearest = round(value)
 	if math.isclose(value, nearest, rel_tol=0.0, abs_tol=1e-10):
@@ -32,9 +40,9 @@ def grid_from_config(config):
 	zoom = int(dem["processing_zoom"])
 	tile_size = int(dem["tile_size"])
 
-	x_min = math.floor(lon_to_tile_x(bounds["west"], zoom))
+	x_min = _inclusive_min_tile(lon_to_tile_x(bounds["west"], zoom))
 	x_max = _exclusive_max_tile(lon_to_tile_x(bounds["east"], zoom))
-	y_min = math.floor(lat_to_tile_y(bounds["north"], zoom))
+	y_min = _inclusive_min_tile(lat_to_tile_y(bounds["north"], zoom))
 	y_max = _exclusive_max_tile(lat_to_tile_y(bounds["south"], zoom))
 
 	if x_max < x_min or y_max < y_min:
