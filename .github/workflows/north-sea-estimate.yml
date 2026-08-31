@@ -23,8 +23,8 @@ jobs:
 
       - name: Estimate Mapterhorn extract
         run: |
-          "$(go env GOPATH)/bin/pmtiles" extract \
-            --bbox=1.5,50.5,9.5,55.5 \
+          "$(go env GOPATH)/bin/go-pmtiles" extract \
+            --bbox=2.5,51.2,5.5,53.2 \
             --maxzoom=11 \
             --overfetch=0 \
             --dry-run \
