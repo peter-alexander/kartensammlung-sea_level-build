@@ -100,6 +100,7 @@ def main():
 			parent_grid,
 			fine_zoom=fine_zoom,
 			halo_tiles=1,
+			transition_buffer_pixels=0,
 			output_config=output_config,
 			output_core=output_core,
 		)
