@@ -1,11 +1,6 @@
 name: Phase 1A build
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/phase-1a-build.yml
   workflow_dispatch:
 
 jobs:
