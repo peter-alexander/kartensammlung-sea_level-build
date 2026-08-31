@@ -1,0 +1,65 @@
+{
+  "source": "nlahn5lowresfilled",
+  "parent_zoom": 11,
+  "fine_zoom": 12,
+  "halo_tiles": 1,
+  "transition_buffer_pixels": 128,
+  "transition_buffer_projected_m": 2445.98490512564,
+  "core_bounds": [
+    3.329205977461151,
+    51.2,
+    5.5,
+    53.2
+  ],
+  "source_coverage_bounds": [
+    3.3511734008789062,
+    50.746014700404864,
+    6.429405212402344,
+    53.522145539637314
+  ],
+  "refinement_geometry_bounds": [
+    3.329205977461151,
+    50.73212609613905,
+    6.451375749682644,
+    53.53520311745651
+  ],
+  "parent_target_bounds": [
+    2.5,
+    51.2,
+    5.5,
+    53.2
+  ],
+  "clipped_sides": {
+    "west": false,
+    "south": true,
+    "east": true,
+    "north": true
+  },
+  "core_tile_range": {
+    "x": [
+      2085,
+      2110
+    ],
+    "y": [
+      1330,
+      1367
+    ]
+  },
+  "work_tile_range": {
+    "x": [
+      2084,
+      2111
+    ],
+    "y": [
+      1330,
+      1367
+    ]
+  },
+  "work_tile_count": 1064,
+  "work_bounds": [
+    3.1640625,
+    51.17934297928927,
+    5.625,
+    53.2257684357902
+  ]
+}

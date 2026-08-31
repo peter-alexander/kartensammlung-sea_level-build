@@ -1,0 +1,26 @@
+{
+  "name": "phase-1c-hierarchical-composite",
+  "build_date": "2026-08-31",
+  "source_run_id": 33434631894,
+  "source_commit": "699cae17dd1ad30457e5cb353f6231d68834ba79",
+  "parent_zoom": 11,
+  "refinement_zoom": 12,
+  "minzoom": 6,
+  "maxzoom": 12,
+  "bounds": [
+    2.5,
+    51.2,
+    5.5,
+    53.2
+  ],
+  "source": "nlahn5lowresfilled",
+  "transition_buffer_pixels": 128,
+  "halo_tiles": 1,
+  "pmtiles_bytes": 10799960,
+  "pmtiles_sha256": "fab7001a3a548764eb7b8efbeec22a0a9fe69bb0bca57cb36a4060962d4711f1",
+  "qa": {
+    "refinement_seam_max_abs_diff_m": 4,
+    "refinement_seam_mean_abs_diff_m": 0.022928,
+    "refinement_seam_pct_diff_gt_5m": 0.0
+  }
+}

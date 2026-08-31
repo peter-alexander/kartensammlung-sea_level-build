@@ -1,0 +1,459 @@
+{
+  "method": "stratified-nearest-bayer-2x2",
+  "minzoom": 6,
+  "maxzoom": 12,
+  "sentinel": 101,
+  "levels": [
+    0,
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100
+  ],
+  "zooms": [
+    {
+      "zoom": 12,
+      "tiles": 1368,
+      "png_bytes": 7745384,
+      "tile_x": [
+        2076,
+        2111
+      ],
+      "tile_y": [
+        1330,
+        1367
+      ],
+      "global_pixel_origin": [
+        1062912,
+        680960
+      ],
+      "raster_shape": [
+        19456,
+        18432
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206665264,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "1": {
+          "estimated_fine_cells": 207541356,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "2": {
+          "estimated_fine_cells": 270465818,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "5": {
+          "estimated_fine_cells": 311761460,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "10": {
+          "estimated_fine_cells": 329634223,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "20": {
+          "estimated_fine_cells": 344245196,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "50": {
+          "estimated_fine_cells": 358259988,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 11,
+      "tiles": 342,
+      "png_bytes": 3085423,
+      "tile_x": [
+        1038,
+        1055
+      ],
+      "tile_y": [
+        665,
+        683
+      ],
+      "global_pixel_origin": [
+        531456,
+        340480
+      ],
+      "raster_shape": [
+        9728,
+        9216
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206665436,
+          "error_cells": 172,
+          "error_pct_domain": 4.8e-05
+        },
+        "1": {
+          "estimated_fine_cells": 207541200,
+          "error_cells": -156,
+          "error_pct_domain": -4.4e-05
+        },
+        "2": {
+          "estimated_fine_cells": 270464592,
+          "error_cells": -1226,
+          "error_pct_domain": -0.000342
+        },
+        "5": {
+          "estimated_fine_cells": 311762396,
+          "error_cells": 936,
+          "error_pct_domain": 0.000261
+        },
+        "10": {
+          "estimated_fine_cells": 329633672,
+          "error_cells": -551,
+          "error_pct_domain": -0.000154
+        },
+        "20": {
+          "estimated_fine_cells": 344244604,
+          "error_cells": -592,
+          "error_pct_domain": -0.000165
+        },
+        "50": {
+          "estimated_fine_cells": 358260008,
+          "error_cells": 20,
+          "error_pct_domain": 6e-06
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 10,
+      "tiles": 90,
+      "png_bytes": 981672,
+      "tile_x": [
+        519,
+        527
+      ],
+      "tile_y": [
+        332,
+        341
+      ],
+      "global_pixel_origin": [
+        265728,
+        170240
+      ],
+      "raster_shape": [
+        4864,
+        4608
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206663408,
+          "error_cells": -1856,
+          "error_pct_domain": -0.000518
+        },
+        "1": {
+          "estimated_fine_cells": 207540816,
+          "error_cells": -540,
+          "error_pct_domain": -0.000151
+        },
+        "2": {
+          "estimated_fine_cells": 270463232,
+          "error_cells": -2586,
+          "error_pct_domain": -0.000721
+        },
+        "5": {
+          "estimated_fine_cells": 311765232,
+          "error_cells": 3772,
+          "error_pct_domain": 0.001052
+        },
+        "10": {
+          "estimated_fine_cells": 329633040,
+          "error_cells": -1183,
+          "error_pct_domain": -0.00033
+        },
+        "20": {
+          "estimated_fine_cells": 344246864,
+          "error_cells": 1668,
+          "error_pct_domain": 0.000465
+        },
+        "50": {
+          "estimated_fine_cells": 358261136,
+          "error_cells": 1148,
+          "error_pct_domain": 0.00032
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 9,
+      "tiles": 25,
+      "png_bytes": 295675,
+      "tile_x": [
+        259,
+        263
+      ],
+      "tile_y": [
+        166,
+        170
+      ],
+      "global_pixel_origin": [
+        132864,
+        85120
+      ],
+      "raster_shape": [
+        2432,
+        2304
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206665600,
+          "error_cells": 336,
+          "error_pct_domain": 9.4e-05
+        },
+        "1": {
+          "estimated_fine_cells": 207543808,
+          "error_cells": 2452,
+          "error_pct_domain": 0.000684
+        },
+        "2": {
+          "estimated_fine_cells": 270473280,
+          "error_cells": 7462,
+          "error_pct_domain": 0.002081
+        },
+        "5": {
+          "estimated_fine_cells": 311764288,
+          "error_cells": 2828,
+          "error_pct_domain": 0.000789
+        },
+        "10": {
+          "estimated_fine_cells": 329643008,
+          "error_cells": 8785,
+          "error_pct_domain": 0.00245
+        },
+        "20": {
+          "estimated_fine_cells": 344244416,
+          "error_cells": -780,
+          "error_pct_domain": -0.000218
+        },
+        "50": {
+          "estimated_fine_cells": 358262592,
+          "error_cells": 2604,
+          "error_pct_domain": 0.000726
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 8,
+      "tiles": 9,
+      "png_bytes": 91496,
+      "tile_x": [
+        129,
+        131
+      ],
+      "tile_y": [
+        83,
+        85
+      ],
+      "global_pixel_origin": [
+        66432,
+        42560
+      ],
+      "raster_shape": [
+        1216,
+        1152
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206690816,
+          "error_cells": 25552,
+          "error_pct_domain": 0.007125
+        },
+        "1": {
+          "estimated_fine_cells": 207573504,
+          "error_cells": 32148,
+          "error_pct_domain": 0.008965
+        },
+        "2": {
+          "estimated_fine_cells": 270484224,
+          "error_cells": 18406,
+          "error_pct_domain": 0.005133
+        },
+        "5": {
+          "estimated_fine_cells": 311719168,
+          "error_cells": -42292,
+          "error_pct_domain": -0.011793
+        },
+        "10": {
+          "estimated_fine_cells": 329693440,
+          "error_cells": 59217,
+          "error_pct_domain": 0.016513
+        },
+        "20": {
+          "estimated_fine_cells": 344278016,
+          "error_cells": 32820,
+          "error_pct_domain": 0.009152
+        },
+        "50": {
+          "estimated_fine_cells": 358258944,
+          "error_cells": -1044,
+          "error_pct_domain": -0.000291
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 7,
+      "tiles": 4,
+      "png_bytes": 29839,
+      "tile_x": [
+        64,
+        65
+      ],
+      "tile_y": [
+        41,
+        42
+      ],
+      "global_pixel_origin": [
+        33216,
+        21280
+      ],
+      "raster_shape": [
+        608,
+        576
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206683136,
+          "error_cells": 17872,
+          "error_pct_domain": 0.004984
+        },
+        "1": {
+          "estimated_fine_cells": 207544320,
+          "error_cells": 2964,
+          "error_pct_domain": 0.000827
+        },
+        "2": {
+          "estimated_fine_cells": 270429184,
+          "error_cells": -36634,
+          "error_pct_domain": -0.010215
+        },
+        "5": {
+          "estimated_fine_cells": 311663616,
+          "error_cells": -97844,
+          "error_pct_domain": -0.027284
+        },
+        "10": {
+          "estimated_fine_cells": 329687040,
+          "error_cells": 52817,
+          "error_pct_domain": 0.014728
+        },
+        "20": {
+          "estimated_fine_cells": 344263680,
+          "error_cells": 18484,
+          "error_pct_domain": 0.005154
+        },
+        "50": {
+          "estimated_fine_cells": 358263808,
+          "error_cells": 3820,
+          "error_pct_domain": 0.001065
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 6,
+      "tiles": 2,
+      "png_bytes": 10953,
+      "tile_x": [
+        32,
+        32
+      ],
+      "tile_y": [
+        20,
+        21
+      ],
+      "global_pixel_origin": [
+        16608,
+        10640
+      ],
+      "raster_shape": [
+        304,
+        288
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 206749696,
+          "error_cells": 84432,
+          "error_pct_domain": 0.023544
+        },
+        "1": {
+          "estimated_fine_cells": 207654912,
+          "error_cells": 113556,
+          "error_pct_domain": 0.031665
+        },
+        "2": {
+          "estimated_fine_cells": 270573568,
+          "error_cells": 107750,
+          "error_pct_domain": 0.030046
+        },
+        "5": {
+          "estimated_fine_cells": 311689216,
+          "error_cells": -72244,
+          "error_pct_domain": -0.020145
+        },
+        "10": {
+          "estimated_fine_cells": 329986048,
+          "error_cells": 351825,
+          "error_pct_domain": 0.098107
+        },
+        "20": {
+          "estimated_fine_cells": 344248320,
+          "error_cells": 3124,
+          "error_pct_domain": 0.000871
+        },
+        "50": {
+          "estimated_fine_cells": 358203392,
+          "error_cells": -56596,
+          "error_pct_domain": -0.015782
+        },
+        "100": {
+          "estimated_fine_cells": 358612992,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    }
+  ]
+}
