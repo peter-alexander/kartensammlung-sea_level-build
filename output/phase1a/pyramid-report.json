@@ -1,0 +1,396 @@
+{
+  "method": "stratified-nearest-bayer-2x2",
+  "minzoom": 6,
+  "maxzoom": 11,
+  "sentinel": 101,
+  "levels": [
+    0,
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100
+  ],
+  "zooms": [
+    {
+      "zoom": 11,
+      "tiles": 342,
+      "png_bytes": 3109795,
+      "tile_x": [
+        1038,
+        1055
+      ],
+      "tile_y": [
+        665,
+        683
+      ],
+      "global_pixel_origin": [
+        531456,
+        340480
+      ],
+      "raster_shape": [
+        9728,
+        9216
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51664331,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "1": {
+          "estimated_fine_cells": 51883137,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "2": {
+          "estimated_fine_cells": 69865338,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "5": {
+          "estimated_fine_cells": 78176682,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "10": {
+          "estimated_fine_cells": 82413528,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "20": {
+          "estimated_fine_cells": 86060226,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "50": {
+          "estimated_fine_cells": 89565086,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 10,
+      "tiles": 90,
+      "png_bytes": 1052852,
+      "tile_x": [
+        519,
+        527
+      ],
+      "tile_y": [
+        332,
+        341
+      ],
+      "global_pixel_origin": [
+        265728,
+        170240
+      ],
+      "raster_shape": [
+        4864,
+        4608
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51664060,
+          "error_cells": -271,
+          "error_pct_domain": -0.000302
+        },
+        "1": {
+          "estimated_fine_cells": 51883080,
+          "error_cells": -57,
+          "error_pct_domain": -6.4e-05
+        },
+        "2": {
+          "estimated_fine_cells": 69865816,
+          "error_cells": 478,
+          "error_pct_domain": 0.000533
+        },
+        "5": {
+          "estimated_fine_cells": 78176440,
+          "error_cells": -242,
+          "error_pct_domain": -0.00027
+        },
+        "10": {
+          "estimated_fine_cells": 82413192,
+          "error_cells": -336,
+          "error_pct_domain": -0.000375
+        },
+        "20": {
+          "estimated_fine_cells": 86060532,
+          "error_cells": 306,
+          "error_pct_domain": 0.000341
+        },
+        "50": {
+          "estimated_fine_cells": 89565332,
+          "error_cells": 246,
+          "error_pct_domain": 0.000274
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 9,
+      "tiles": 25,
+      "png_bytes": 319328,
+      "tile_x": [
+        259,
+        263
+      ],
+      "tile_y": [
+        166,
+        170
+      ],
+      "global_pixel_origin": [
+        132864,
+        85120
+      ],
+      "raster_shape": [
+        2432,
+        2304
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51664400,
+          "error_cells": 69,
+          "error_pct_domain": 7.7e-05
+        },
+        "1": {
+          "estimated_fine_cells": 51884032,
+          "error_cells": 895,
+          "error_pct_domain": 0.000998
+        },
+        "2": {
+          "estimated_fine_cells": 69868928,
+          "error_cells": 3590,
+          "error_pct_domain": 0.004004
+        },
+        "5": {
+          "estimated_fine_cells": 78176944,
+          "error_cells": 262,
+          "error_pct_domain": 0.000292
+        },
+        "10": {
+          "estimated_fine_cells": 82415360,
+          "error_cells": 1832,
+          "error_pct_domain": 0.002043
+        },
+        "20": {
+          "estimated_fine_cells": 86060032,
+          "error_cells": -194,
+          "error_pct_domain": -0.000216
+        },
+        "50": {
+          "estimated_fine_cells": 89565632,
+          "error_cells": 546,
+          "error_pct_domain": 0.000609
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 8,
+      "tiles": 9,
+      "png_bytes": 98558,
+      "tile_x": [
+        129,
+        131
+      ],
+      "tile_y": [
+        83,
+        85
+      ],
+      "global_pixel_origin": [
+        66432,
+        42560
+      ],
+      "raster_shape": [
+        1216,
+        1152
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51670080,
+          "error_cells": 5749,
+          "error_pct_domain": 0.006412
+        },
+        "1": {
+          "estimated_fine_cells": 51891776,
+          "error_cells": 8639,
+          "error_pct_domain": 0.009636
+        },
+        "2": {
+          "estimated_fine_cells": 69876096,
+          "error_cells": 10758,
+          "error_pct_domain": 0.012
+        },
+        "5": {
+          "estimated_fine_cells": 78167680,
+          "error_cells": -9002,
+          "error_pct_domain": -0.010041
+        },
+        "10": {
+          "estimated_fine_cells": 82427136,
+          "error_cells": 13608,
+          "error_pct_domain": 0.015178
+        },
+        "20": {
+          "estimated_fine_cells": 86068160,
+          "error_cells": 7934,
+          "error_pct_domain": 0.00885
+        },
+        "50": {
+          "estimated_fine_cells": 89564608,
+          "error_cells": -478,
+          "error_pct_domain": -0.000533
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 7,
+      "tiles": 4,
+      "png_bytes": 31755,
+      "tile_x": [
+        64,
+        65
+      ],
+      "tile_y": [
+        41,
+        42
+      ],
+      "global_pixel_origin": [
+        33216,
+        21280
+      ],
+      "raster_shape": [
+        608,
+        576
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51666688,
+          "error_cells": 2357,
+          "error_pct_domain": 0.002629
+        },
+        "1": {
+          "estimated_fine_cells": 51884800,
+          "error_cells": 1663,
+          "error_pct_domain": 0.001855
+        },
+        "2": {
+          "estimated_fine_cells": 69874688,
+          "error_cells": 9350,
+          "error_pct_domain": 0.010429
+        },
+        "5": {
+          "estimated_fine_cells": 78165248,
+          "error_cells": -11434,
+          "error_pct_domain": -0.012754
+        },
+        "10": {
+          "estimated_fine_cells": 82424320,
+          "error_cells": 10792,
+          "error_pct_domain": 0.012037
+        },
+        "20": {
+          "estimated_fine_cells": 86061824,
+          "error_cells": 1598,
+          "error_pct_domain": 0.001782
+        },
+        "50": {
+          "estimated_fine_cells": 89565440,
+          "error_cells": 354,
+          "error_pct_domain": 0.000395
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 6,
+      "tiles": 2,
+      "png_bytes": 11513,
+      "tile_x": [
+        32,
+        32
+      ],
+      "tile_y": [
+        20,
+        21
+      ],
+      "global_pixel_origin": [
+        16608,
+        10640
+      ],
+      "raster_shape": [
+        304,
+        288
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 51681280,
+          "error_cells": 16949,
+          "error_pct_domain": 0.018905
+        },
+        "1": {
+          "estimated_fine_cells": 51907584,
+          "error_cells": 24447,
+          "error_pct_domain": 0.027268
+        },
+        "2": {
+          "estimated_fine_cells": 69905408,
+          "error_cells": 40070,
+          "error_pct_domain": 0.044694
+        },
+        "5": {
+          "estimated_fine_cells": 78180352,
+          "error_cells": 3670,
+          "error_pct_domain": 0.004094
+        },
+        "10": {
+          "estimated_fine_cells": 82497536,
+          "error_cells": 84008,
+          "error_pct_domain": 0.093703
+        },
+        "20": {
+          "estimated_fine_cells": 86054912,
+          "error_cells": -5314,
+          "error_pct_domain": -0.005927
+        },
+        "50": {
+          "estimated_fine_cells": 89551872,
+          "error_cells": -13214,
+          "error_pct_domain": -0.014739
+        },
+        "100": {
+          "estimated_fine_cells": 89653248,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    }
+  ]
+}

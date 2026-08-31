@@ -1,0 +1,16 @@
+{
+  "build": "phase-1a-western-netherlands",
+  "created": "2026-08-31",
+  "bounds": [2.5, 51.2, 5.5, 53.2],
+  "minzoom": 6,
+  "maxzoom": 11,
+  "threshold_min_m": 0,
+  "threshold_max_m": 100,
+  "threshold_step_m": 1,
+  "sentinel": 101,
+  "connectivity": 4,
+  "dem": "Mapterhorn",
+  "ocean_mask": "OpenStreetMap water polygons",
+  "pyramid": "stratified-nearest-bayer-2x2",
+  "pmtiles": "sea-level-threshold.pmtiles"
+}
