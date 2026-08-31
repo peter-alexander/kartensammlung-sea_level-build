@@ -122,6 +122,79 @@ def add_metrics(state, fine_values, base_values, mask):
 	state["gt5"] += int(np.count_nonzero(abs_diff > 5))
 
 
+def collect_edge_outliers(
+	outliers,
+	fine_values,
+	base_values,
+	edge,
+	fine_grid,
+	row_start,
+	*,
+	limit=50,
+):
+	if not np.any(edge):
+		return
+
+	diff = (
+		fine_values.astype(np.int16)
+		- base_values.astype(np.int16)
+	)
+	abs_diff = np.abs(diff)
+	candidate_mask = edge & (abs_diff > 1)
+
+	if not np.any(candidate_mask):
+		return
+
+	rows, cols = np.nonzero(candidate_mask)
+	values = abs_diff[rows, cols]
+
+	if values.size > limit:
+		selected = np.argpartition(values, -limit)[-limit:]
+		rows = rows[selected]
+		cols = cols[selected]
+		values = values[selected]
+
+	for local_row, col, absolute_difference in zip(
+		rows.tolist(),
+		cols.tolist(),
+		values.tolist(),
+	):
+		row = row_start + local_row
+		x = (
+			fine_grid["left"]
+			+ (col + 0.5) * fine_grid["resolution"]
+		)
+		y = (
+			fine_grid["top"]
+			- (row + 0.5) * fine_grid["resolution"]
+		)
+		lon = mercator_x_to_lon(x)
+		lat = mercator_y_to_lat(y)
+		fine_value = int(fine_values[local_row, col])
+		base_value = int(base_values[local_row, col])
+
+		outliers.append({
+			"abs_diff_m": int(absolute_difference),
+			"signed_diff_m": fine_value - base_value,
+			"fine_threshold_m": fine_value,
+			"base_threshold_m": base_value,
+			"lon": round(lon, 8),
+			"lat": round(lat, 8),
+			"fine_row": int(row),
+			"fine_col": int(col),
+		})
+
+	outliers.sort(
+		key=lambda item: (
+			-item["abs_diff_m"],
+			-item["signed_diff_m"],
+			item["lat"],
+			item["lon"],
+		)
+	)
+	del outliers[limit:]
+
+
 def finish_metrics(state):
 	count = state["count"]
 	if count == 0:
@@ -242,6 +315,7 @@ def build_composite(
 	core = load_core_geometry(core_geojson_path)
 	core_metrics = metric_state()
 	edge_metrics = metric_state()
+	edge_outliers = []
 	written = 0
 
 	for fine_row in range(0, fine_grid["height"], chunk_rows):
@@ -316,6 +390,14 @@ def build_composite(
 			base_values,
 			edge,
 		)
+		collect_edge_outliers(
+			edge_outliers,
+			fine_values,
+			base_values,
+			edge,
+			fine_grid,
+			fine_row,
+		)
 
 		target = output[
 			out_row0:out_row1,
@@ -361,6 +443,7 @@ def build_composite(
 		"fine_pixels_written": written,
 		"core_vs_upsampled_base": finish_metrics(core_metrics),
 		"core_edge_vs_upsampled_base": finish_metrics(edge_metrics),
+		"core_edge_top_outliers": edge_outliers,
 	}
 
 	(output_dir / "report.json").write_text(
