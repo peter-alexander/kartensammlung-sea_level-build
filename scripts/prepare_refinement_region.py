@@ -108,8 +108,10 @@ def prepare_region(
 	parent_grid_path,
 	*,
 	fine_zoom,
-	halo_tiles,
-	transition_buffer_pixels,
+	halo_tiles=None,
+	halo_projected_m=None,
+	transition_buffer_pixels=None,
+	transition_buffer_projected_m=None,
 	output_config,
 	output_core,
 ):
@@ -133,10 +135,53 @@ def prepare_region(
 		WEB_MERCATOR_WORLD
 		/ ((2 ** fine_zoom) * tile_size)
 	)
-	transition_buffer_m = (
-		float(transition_buffer_pixels)
-		* fine_resolution
-	)
+	fine_tile_projected_m = fine_resolution * tile_size
+
+	if transition_buffer_projected_m is not None:
+		transition_buffer_m = float(transition_buffer_projected_m)
+		if transition_buffer_m < 0:
+			raise ValueError(
+				"transition_buffer_projected_m muss >= 0 sein."
+			)
+		transition_buffer_pixels_effective = (
+			transition_buffer_m / fine_resolution
+		)
+	elif transition_buffer_pixels is not None:
+		transition_buffer_pixels_effective = float(
+			transition_buffer_pixels
+		)
+		if transition_buffer_pixels_effective < 0:
+			raise ValueError(
+				"transition_buffer_pixels muss >= 0 sein."
+			)
+		transition_buffer_m = (
+			transition_buffer_pixels_effective
+			* fine_resolution
+		)
+	else:
+		transition_buffer_pixels_effective = 0.0
+		transition_buffer_m = 0.0
+
+	if halo_projected_m is not None:
+		halo_projected_m_effective = float(halo_projected_m)
+		if halo_projected_m_effective < 0:
+			raise ValueError("halo_projected_m muss >= 0 sein.")
+		halo_tiles_effective = int(math.ceil(
+			halo_projected_m_effective
+			/ fine_tile_projected_m
+		))
+	elif halo_tiles is not None:
+		halo_tiles_effective = int(halo_tiles)
+		if halo_tiles_effective < 0:
+			raise ValueError("halo_tiles muss >= 0 sein.")
+		halo_projected_m_effective = (
+			halo_tiles_effective
+			* fine_tile_projected_m
+		)
+	else:
+		halo_tiles_effective = 0
+		halo_projected_m_effective = 0.0
+
 	refinement_geometry = buffer_geometry_web_mercator(
 		source_geometry,
 		transition_buffer_m,
@@ -161,10 +206,10 @@ def prepare_region(
 	parent_child_y_min = int(parent_grid["y_min"]) * factor
 	parent_child_y_max = (int(parent_grid["y_max"]) + 1) * factor - 1
 
-	work_x_min = max(parent_child_x_min, x_min - halo_tiles)
-	work_x_max = min(parent_child_x_max, x_max + halo_tiles)
-	work_y_min = max(parent_child_y_min, y_min - halo_tiles)
-	work_y_max = min(parent_child_y_max, y_max + halo_tiles)
+	work_x_min = max(parent_child_x_min, x_min - halo_tiles_effective)
+	work_x_max = min(parent_child_x_max, x_max + halo_tiles_effective)
+	work_y_min = max(parent_child_y_min, y_min - halo_tiles_effective)
+	work_y_max = min(parent_child_y_max, y_max + halo_tiles_effective)
 
 	west, _south, _east, north = tile_bounds_lonlat(
 		work_x_min,
@@ -190,8 +235,12 @@ def prepare_region(
 			"source_properties": source_properties,
 			"parent_zoom": parent_zoom,
 			"fine_zoom": fine_zoom,
-			"halo_tiles": halo_tiles,
-			"transition_buffer_pixels": transition_buffer_pixels,
+			"halo_tiles": halo_tiles_effective,
+			"halo_projected_m": halo_projected_m_effective,
+			"fine_tile_projected_m": fine_tile_projected_m,
+			"transition_buffer_pixels": (
+				transition_buffer_pixels_effective
+			),
 			"transition_buffer_projected_m": transition_buffer_m,
 			"core_bounds": list(core.bounds),
 			"core_geojson": str(output_core),
@@ -232,7 +281,9 @@ def prepare_region(
 			"parent_target_bounds": list(target_bounds),
 			"source_coverage_bounds": list(source_bounds),
 			"refinement_geometry_bounds": list(refinement_bounds),
-			"transition_buffer_pixels": transition_buffer_pixels,
+			"transition_buffer_pixels": (
+				transition_buffer_pixels_effective
+			),
 			"transition_buffer_projected_m": transition_buffer_m,
 			"clipped_sides": clipped_sides,
 		},
@@ -247,8 +298,12 @@ def prepare_region(
 		"source": source,
 		"parent_zoom": parent_zoom,
 		"fine_zoom": fine_zoom,
-		"halo_tiles": halo_tiles,
-		"transition_buffer_pixels": transition_buffer_pixels,
+		"halo_tiles": halo_tiles_effective,
+		"halo_projected_m": halo_projected_m_effective,
+		"fine_tile_projected_m": fine_tile_projected_m,
+		"transition_buffer_pixels": (
+			transition_buffer_pixels_effective
+		),
 		"transition_buffer_projected_m": transition_buffer_m,
 		"core_bounds": list(core.bounds),
 		"source_coverage_bounds": list(source_bounds),
@@ -285,20 +340,42 @@ def main():
 	parser.add_argument("--source", required=True)
 	parser.add_argument("--parent-grid", required=True)
 	parser.add_argument("--fine-zoom", type=int, required=True)
-	parser.add_argument("--halo-tiles", type=int, default=1)
-	parser.add_argument(
+	halo_group = parser.add_mutually_exclusive_group()
+	halo_group.add_argument("--halo-tiles", type=int)
+	halo_group.add_argument("--halo-projected-m", type=float)
+
+	transition_group = parser.add_mutually_exclusive_group()
+	transition_group.add_argument(
 		"--transition-buffer-pixels",
-		type=int,
-		default=0,
+		type=float,
+	)
+	transition_group.add_argument(
+		"--transition-buffer-projected-m",
+		type=float,
 	)
 	parser.add_argument("--output-config", required=True)
 	parser.add_argument("--output-core", required=True)
 	args = parser.parse_args()
 
-	if args.halo_tiles < 0:
+	if args.halo_tiles is not None and args.halo_tiles < 0:
 		parser.error("--halo-tiles muss >= 0 sein.")
-	if args.transition_buffer_pixels < 0:
+	if (
+		args.halo_projected_m is not None
+		and args.halo_projected_m < 0
+	):
+		parser.error("--halo-projected-m muss >= 0 sein.")
+	if (
+		args.transition_buffer_pixels is not None
+		and args.transition_buffer_pixels < 0
+	):
 		parser.error("--transition-buffer-pixels muss >= 0 sein.")
+	if (
+		args.transition_buffer_projected_m is not None
+		and args.transition_buffer_projected_m < 0
+	):
+		parser.error(
+			"--transition-buffer-projected-m muss >= 0 sein."
+		)
 
 	report = prepare_region(
 		args.sources_geojson,
@@ -306,7 +383,11 @@ def main():
 		args.parent_grid,
 		fine_zoom=args.fine_zoom,
 		halo_tiles=args.halo_tiles,
+		halo_projected_m=args.halo_projected_m,
 		transition_buffer_pixels=args.transition_buffer_pixels,
+		transition_buffer_projected_m=(
+			args.transition_buffer_projected_m
+		),
 		output_config=args.output_config,
 		output_core=args.output_core,
 	)
