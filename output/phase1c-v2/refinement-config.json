@@ -1,0 +1,77 @@
+{
+  "name": "refinement-nlahn5lowresfilled-z12",
+  "bounds": {
+    "west": 3.1640625,
+    "south": 51.17934297928927,
+    "east": 5.625,
+    "north": 53.2257684357902
+  },
+  "refinement": {
+    "source": "nlahn5lowresfilled",
+    "source_properties": {
+      "source": "nlahn5lowresfilled",
+      "name": "Actueel Hoogtebestand Nederland, AHN5 5m",
+      "resolution_m": 5.0,
+      "license": "CC BY 4.0",
+      "producer": "AHN.nl",
+      "access_year": 2025,
+      "automatic_tier": 2,
+      "tier3_candidate": false,
+      "recommended_processing_zoom": 12,
+      "recommended_ground_resolution_m": 11.945,
+      "tier3_candidate_processing_zoom": null,
+      "tier3_candidate_ground_resolution_m": null
+    },
+    "parent_zoom": 11,
+    "fine_zoom": 12,
+    "halo_tiles": 1,
+    "transition_buffer_pixels": 128,
+    "transition_buffer_projected_m": 2445.98490512564,
+    "core_bounds": [
+      3.329205977461151,
+      51.2,
+      5.5,
+      53.2
+    ],
+    "core_geojson": "tmp/phase1c/refinement-core.geojson"
+  },
+  "dem": {
+    "provider": "mapterhorn",
+    "tile_endpoint": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+    "processing_zoom": 12,
+    "tile_size": 512,
+    "encoding": "terrarium"
+  },
+  "threshold": {
+    "scheme": "piecewise-v2",
+    "min_m": 0,
+    "max_m": 70,
+    "bands": [
+      {
+        "min_m": 0,
+        "max_m": 2,
+        "step_m": 0.1
+      },
+      {
+        "min_m": 2,
+        "max_m": 5,
+        "step_m": 0.25
+      },
+      {
+        "min_m": 5,
+        "max_m": 20,
+        "step_m": 1
+      },
+      {
+        "min_m": 20,
+        "max_m": 70,
+        "step_m": 5
+      }
+    ],
+    "class_count": 58,
+    "connectivity": 4,
+    "sentinel_class": 58,
+    "sentinel_m": 71,
+    "rounding": "ceil-to-next-level"
+  }
+}

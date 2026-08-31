@@ -1,0 +1,147 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-08-31T21:25:47.563952+00:00",
+  "bounds": [
+    2.5,
+    51.2,
+    5.5,
+    53.2
+  ],
+  "coverage": {
+    "zoom": 8,
+    "requested_tile_count": 9,
+    "context_tiles": 1,
+    "context_tile_count": 25,
+    "context_bounds": [
+      0.0,
+      49.83798245308484,
+      7.03125,
+      54.1624339680678
+    ],
+    "tile_url": "https://single-archive-tiles.mapterhorn.com/coverage/{z}/{x}/{y}.mvt",
+    "source_count": 3
+  },
+  "mapterhorn": {
+    "attribution_url": "https://download.mapterhorn.com/attribution.json",
+    "download_urls_url": "https://download.mapterhorn.com/download_urls.json",
+    "download_urls_version": "0.0.12",
+    "priority_rule": "higher local maxzoom first; at equal maxzoom lexicographically earlier source name first"
+  },
+  "rules": {
+    "base_target_ground_resolution_m": 30.0,
+    "tier2_max_source_resolution_m": 10.0,
+    "tier2_target_ground_resolution_m": 12.0,
+    "tier3_max_source_resolution_m": 2.0,
+    "tier3_target_ground_resolution_m": 6.0,
+    "tier3_policy": "QA candidate only; not automatic build"
+  },
+  "base": {
+    "source": "planet.pmtiles / Mapterhorn aggregated terrain",
+    "recommended_processing_zoom_at_bbox_center": 11,
+    "ground_resolution_m_at_bbox_center": 23.424
+  },
+  "sources": [
+    {
+      "source": "beflanders",
+      "name": "Digitaal Hoogtemodel Vlaanderen II, DTM, raster, 1 m",
+      "resolution_m": 1.0,
+      "license": "Model license for free reuse",
+      "producer": "agentschap Digitaal Vlaanderen",
+      "website": "https://www.vlaanderen.be/datavindplaats/catalogus/digitaal-hoogtemodel-vlaanderen-ii-dtm-raster-1-m",
+      "access_year": 2025,
+      "coverage_bounds": [
+        2.8306961059570312,
+        51.2,
+        5.5,
+        51.55893016309309
+      ],
+      "automatic_tier": 2,
+      "tier3_candidate": true,
+      "recommended_processing_zoom": 12,
+      "recommended_ground_resolution_m": 11.927,
+      "tier3_candidate_processing_zoom": 13,
+      "tier3_candidate_ground_resolution_m": 5.964
+    },
+    {
+      "source": "glo30",
+      "name": "COPERNICUS GLO-30",
+      "resolution_m": 30.0,
+      "license": "COPERNICUS full, free and open license",
+      "producer": "DLR e.V. 2010-2014, Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA. All rights reserved. Accessed via OpenTopography and AWS Open Data.",
+      "website": "https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM",
+      "access_year": 2025,
+      "coverage_bounds": [
+        2.5,
+        51.2,
+        5.5,
+        53.2
+      ],
+      "automatic_tier": 1,
+      "tier3_candidate": false,
+      "recommended_processing_zoom": null,
+      "recommended_ground_resolution_m": null,
+      "tier3_candidate_processing_zoom": null,
+      "tier3_candidate_ground_resolution_m": null
+    },
+    {
+      "source": "nlahn5lowresfilled",
+      "name": "Actueel Hoogtebestand Nederland, AHN5 5m",
+      "resolution_m": 5.0,
+      "license": "CC BY 4.0",
+      "producer": "AHN.nl",
+      "website": "https://www.ahn.nl/dataroom",
+      "access_year": 2025,
+      "coverage_bounds": [
+        3.3511734008789062,
+        51.2,
+        5.5,
+        53.2
+      ],
+      "automatic_tier": 2,
+      "tier3_candidate": false,
+      "recommended_processing_zoom": 12,
+      "recommended_ground_resolution_m": 11.945,
+      "tier3_candidate_processing_zoom": null,
+      "tier3_candidate_ground_resolution_m": null
+    }
+  ],
+  "tier2": {
+    "source_count": 2,
+    "has_coverage": true
+  },
+  "tier3_candidates": {
+    "source_count": 1,
+    "has_coverage": true
+  },
+  "high_resolution_archives": {
+    "purpose": "informational for z13+ / Tier-3 QA; automatic Tier 2 uses Mapterhorn z0-z12",
+    "count": 2,
+    "total_bytes": 206641310554,
+    "items": [
+      {
+        "name": "6-32-20.pmtiles",
+        "url": "https://download.mapterhorn.com/6-32-20.pmtiles",
+        "md5sum": "668ba26d9cb0f195a0875d82fb7fb538",
+        "size": 5178679831,
+        "min_lon": 0.0,
+        "min_lat": 52.4827802,
+        "max_lon": 5.625,
+        "max_lat": 53.8525266,
+        "min_zoom": 13,
+        "max_zoom": 16
+      },
+      {
+        "name": "6-32-21.pmtiles",
+        "url": "https://download.mapterhorn.com/6-32-21.pmtiles",
+        "md5sum": "bd8510bbed65c3c81d1ec44c17bc138c",
+        "size": 201462630723,
+        "min_lon": 0.0,
+        "min_lat": 48.9224992,
+        "max_lon": 5.625,
+        "max_lat": 52.4827802,
+        "min_zoom": 13,
+        "max_zoom": 17
+      }
+    ]
+  }
+}

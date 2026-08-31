@@ -1,0 +1,17 @@
+{
+  "coarse_grid": "tmp/phase1c/base/grid.json",
+  "fine_grid": "tmp/phase1c/fine/grid.json",
+  "output": "tmp/phase1c/fine/boundary.u8",
+  "fine_shape": [
+    19456,
+    14336
+  ],
+  "edge_cells": 67580,
+  "active_boundary_seeds": 67580,
+  "sentinel_boundary_cells": 0,
+  "unmapped_boundary_cells": 0,
+  "active_min_class": 0,
+  "active_max_class": 55,
+  "active_min_m": 0.0,
+  "active_max_m": 60.0
+}

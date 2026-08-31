@@ -1,0 +1,84 @@
+{
+  "phase": "1C-v2",
+  "threshold_schema": {
+    "scheme": "piecewise-v2",
+    "min_m": 0,
+    "max_m": 70,
+    "bands": [
+      {
+        "min_m": 0,
+        "max_m": 2,
+        "step_m": 0.1
+      },
+      {
+        "min_m": 2,
+        "max_m": 5,
+        "step_m": 0.25
+      },
+      {
+        "min_m": 5,
+        "max_m": 20,
+        "step_m": 1
+      },
+      {
+        "min_m": 20,
+        "max_m": 70,
+        "step_m": 5
+      }
+    ],
+    "class_count": 58,
+    "connectivity": 4,
+    "sentinel_class": 58,
+    "sentinel_m": 71,
+    "rounding": "ceil-to-next-level"
+  },
+  "source_run_id": 33441239895,
+  "source_commit": "9156444474534d8d559e4b4637d1dd302afac3e2",
+  "base_zoom": 11,
+  "fine_zoom": 12,
+  "refinement_source": "nlahn5lowresfilled",
+  "transition_buffer_pixels": 128,
+  "pmtiles": {
+    "file": "sea-level-threshold.pmtiles",
+    "bytes": 15125875,
+    "sha256": "e9c6f7d2cb5b9a75981ea6b5f210532dd237fff89c99a3a85e51411e3e1e6e34",
+    "minzoom": 6,
+    "maxzoom": 12,
+    "bounds": [
+      2.5,
+      51.2,
+      5.5,
+      53.2
+    ]
+  },
+  "source_seam_slider_qa": {
+    "count": 76588,
+    "maximum": {
+      "different_cells": 538,
+      "different_pct": 0.70246,
+      "at_level_m": 4.75
+    },
+    "bands": {
+      "0-2m": {
+        "max_different_cells": 4,
+        "max_different_pct": 0.005223,
+        "at_level_m": 0.2
+      },
+      "2-5m": {
+        "max_different_cells": 538,
+        "max_different_pct": 0.70246,
+        "at_level_m": 4.75
+      },
+      "5-20m": {
+        "max_different_cells": 69,
+        "max_different_pct": 0.090092,
+        "at_level_m": 17.0
+      },
+      "20-70m": {
+        "max_different_cells": 63,
+        "max_different_pct": 0.082258,
+        "at_level_m": 30.0
+      }
+    }
+  }
+}
