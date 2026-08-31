@@ -128,6 +128,12 @@ def main():
 		if any(properties["clipped_sides"].values()):
 			raise AssertionError(properties)
 
+		fine_config = json.loads(output_config.read_text())
+		if fine_config["threshold"]["max_m"] != 70.0:
+			raise AssertionError(fine_config["threshold"])
+		if fine_config["threshold"]["class_count"] != 58:
+			raise AssertionError(fine_config["threshold"])
+
 	print("ok")
 
 

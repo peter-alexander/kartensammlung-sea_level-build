@@ -13,13 +13,25 @@ SCRIPT_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from priority_flood import compute_inundation_threshold
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	class_for_meters,
+	levels_csv,
+)
 
 
-def quantize_exact(values, max_level=100, step=1.0):
+def quantize_exact(values):
 	array = np.asarray(values, dtype=np.float64)
-	out = np.ceil(np.maximum(array, 0.0) / step).astype(np.int64)
-	out[out > max_level] = max_level + 1
-	return out.astype(np.uint8)
+	safe = np.maximum(array, 0.0)
+	indices = np.searchsorted(
+		np.asarray(LEVELS_M, dtype=np.float64),
+		safe - 1e-12,
+		side="left",
+	)
+	indices[~np.isfinite(array)] = SENTINEL_CLASS
+	indices[indices >= SENTINEL_CLASS] = SENTINEL_CLASS
+	return indices.astype(np.uint8)
 
 
 def boundary_to_cpp(boundary, shape):
@@ -32,7 +44,7 @@ def boundary_to_cpp(boundary, shape):
 			value = boundary[row][col]
 			if value is None:
 				continue
-			array[row, col] = int(value)
+			array[row, col] = class_for_meters(value)
 
 	return array
 
@@ -58,8 +70,7 @@ def run_cpp(elevation, sea, boundary=None):
 			"--output", str(output_path),
 			"--width", str(elevation.shape[1]),
 			"--height", str(elevation.shape[0]),
-			"--max-level", "100",
-			"--step", "1",
+			"--levels", levels_csv(),
 			"--connectivity", "4",
 		]
 
@@ -174,9 +185,16 @@ def test_boundary_seed_can_be_improved():
 	return result
 
 
+def test_piecewise_levels():
+	elevation = [[0, 0.03, 1.84, 2.12, 4.88, 5.10, 21.0, 70.01]]
+	sea = [[1, 0, 0, 0, 0, 0, 0, 0]]
+	return assert_matches_reference("piecewise_levels", elevation, sea)
+
+
 def main():
 	results = [
 		test_ocean_only(),
+		test_piecewise_levels(),
 		test_boundary_only(),
 		test_boundary_seed_can_be_improved(),
 	]

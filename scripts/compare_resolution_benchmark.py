@@ -7,6 +7,13 @@ from pathlib import Path
 
 import numpy as np
 
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	class_for_meters,
+	format_level,
+)
+
 
 def lonlat_to_mercator(lon, lat):
 	radius = 6378137.0
@@ -81,14 +88,21 @@ def sample_points(grid_meta, threshold):
 		if row < 0 or col < 0 or row >= threshold.shape[0] or col >= threshold.shape[1]:
 			result[name] = None
 		else:
-			result[name] = int(threshold[row, col])
+			class_index = int(threshold[row, col])
+			result[name] = (
+				LEVELS_M[class_index]
+				if class_index < SENTINEL_CLASS
+				else None
+			)
 	return result
 
 
 def flooded_fraction(threshold, levels):
 	total = threshold.size
 	return {
-		str(level): float(np.count_nonzero(threshold <= level)) / total
+		format_level(level): (
+			float(np.count_nonzero(threshold <= class_for_meters(level))) / total
+		)
 		for level in levels
 	}
 
@@ -110,9 +124,9 @@ def compare_to_fine(coarse, fine, factor):
 			(center_offset - 1)::factor,
 		][:coarse.shape[0], :coarse.shape[1]]
 
-	valid = (coarse <= 100) & (fine_center <= 100)
-	diff = coarse.astype(np.int16) - fine_center.astype(np.int16)
-	valid_diff = diff[valid]
+	valid = (coarse < SENTINEL_CLASS) & (fine_center < SENTINEL_CLASS)
+	lookup = np.asarray(LEVELS_M, dtype=np.float64)
+	valid_diff = lookup[coarse[valid]] - lookup[fine_center[valid]]
 
 	if valid_diff.size == 0:
 		return {
@@ -148,7 +162,7 @@ def main():
 		grid_meta, threshold = load_run(path)
 		runs[zoom] = (grid_meta, threshold)
 
-	levels = [0,1,2,3,4,5,6,7,8,10,20,50,100]
+	levels = [0,0.5,1,2,3,4,5,6,7,8,10,20,50,70]
 	report = {
 		"levels": levels,
 		"runs": {},
@@ -169,7 +183,7 @@ def main():
 			"ground_pixel_m_approx": round(ground_pixel,3),
 			"sample_points": sample_points(grid_meta,threshold),
 			"flooded_fraction": flooded_fraction(threshold,levels),
-			"sentinel_fraction": round(float(np.mean(threshold == 101)),8),
+			"sentinel_fraction": round(float(np.mean(threshold == SENTINEL_CLASS)),8),
 		}
 
 	z13 = runs[13][1]
@@ -182,10 +196,11 @@ def main():
 
 	for zoom in (11,12):
 		for level in levels:
-			coarse = report["runs"][str(zoom)]["flooded_fraction"][str(level)]
-			fine = report["runs"]["13"]["flooded_fraction"][str(level)]
+			key = format_level(level)
+			coarse = report["runs"][str(zoom)]["flooded_fraction"][key]
+			fine = report["runs"]["13"]["flooded_fraction"][key]
 			report["runs"][str(zoom)].setdefault("flooded_fraction_error_vs_z13",{})[
-				str(level)
+				key
 			] = round(coarse - fine,8)
 
 	Path(args.output).write_text(

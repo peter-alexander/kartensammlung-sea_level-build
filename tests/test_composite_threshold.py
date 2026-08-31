@@ -16,6 +16,7 @@ from build_composite_threshold import (
 	WEB_MERCATOR_RADIUS,
 	build_composite,
 )
+from threshold_levels import class_for_meters
 
 
 def mercator_to_lonlat(x, y):
@@ -92,12 +93,12 @@ def main():
 		)
 
 		base = np.asarray([
-			[1, 2],
-			[3, 4],
+			[class_for_meters(1), class_for_meters(2)],
+			[class_for_meters(3), class_for_meters(4)],
 		], dtype=np.uint8)
 		base.tofile(base_threshold_path)
 
-		fine = np.full((4, 4), 9, dtype=np.uint8)
+		fine = np.full((4, 4), class_for_meters(9), dtype=np.uint8)
 		fine.tofile(fine_threshold_path)
 
 		west, south = mercator_to_lonlat(1.0, 1.0)
@@ -129,10 +130,10 @@ def main():
 		).reshape((4, 4))
 
 		expected = np.asarray([
-			[1, 1, 2, 2],
-			[1, 9, 9, 2],
-			[3, 9, 9, 4],
-			[3, 3, 4, 4],
+			[class_for_meters(1), class_for_meters(1), class_for_meters(2), class_for_meters(2)],
+			[class_for_meters(1), class_for_meters(9), class_for_meters(9), class_for_meters(2)],
+			[class_for_meters(3), class_for_meters(9), class_for_meters(9), class_for_meters(4)],
+			[class_for_meters(3), class_for_meters(3), class_for_meters(4), class_for_meters(4)],
 		], dtype=np.uint8)
 
 		if not np.array_equal(actual, expected):
@@ -142,7 +143,7 @@ def main():
 
 		if report["fine_pixels_written"] != 4:
 			raise AssertionError(report)
-		if report["core_vs_upsampled_base"]["max_abs_diff_m"] != 8:
+		if report["core_vs_upsampled_base"]["max_abs_diff_m"] != 8.0:
 			raise AssertionError(report)
 		if report["source_coverage_seam_vs_upsampled_base"]["count"] != 4:
 			raise AssertionError(report)

@@ -7,6 +7,13 @@ from pathlib import Path
 
 import numpy as np
 
+from threshold_levels import (
+	LEVELS_M,
+	SENTINEL_CLASS,
+	class_for_meters,
+	format_level,
+)
+
 
 RADIUS = 6378137.0
 
@@ -74,15 +81,24 @@ def main():
 			f"{reference_core.shape} vs {refinement_core.shape}"
 		)
 
-	diff = refinement_core.astype(np.int16) - reference_core.astype(np.int16)
+	valid = (
+		(refinement_core < SENTINEL_CLASS)
+		& (reference_core < SENTINEL_CLASS)
+	)
+	lookup = np.asarray(LEVELS_M, dtype=np.float64)
+	diff = (
+		lookup[refinement_core[valid]]
+		- lookup[reference_core[valid]]
+	)
 	abs_diff = np.abs(diff)
-	levels = [0,1,2,3,4,5,6,7,8,10,20,50,100]
+	levels = [0,0.5,1,2,3,4,5,6,7,8,10,20,50,70]
 
 	level_report = {}
 	for level in levels:
-		ref_fraction = float(np.mean(reference_core <= level))
-		fine_fraction = float(np.mean(refinement_core <= level))
-		level_report[str(level)] = {
+		class_index = class_for_meters(level)
+		ref_fraction = float(np.mean(reference_core <= class_index))
+		fine_fraction = float(np.mean(refinement_core <= class_index))
+		level_report[format_level(level)] = {
 			"reference_fraction": ref_fraction,
 			"refinement_fraction": fine_fraction,
 			"difference": fine_fraction - ref_fraction,
@@ -102,13 +118,15 @@ def main():
 		"sea_seed_cells_in_refinement_work_area": sea_report["sea_seed_cells"],
 		"boundary": boundary_report,
 		"comparison": {
-			"exact_equal_pct": round(float(np.mean(diff == 0) * 100), 6),
-			"mean_abs_diff_m": round(float(np.mean(abs_diff)), 6),
-			"median_abs_diff_m": round(float(np.median(abs_diff)), 6),
-			"max_abs_diff_m": int(np.max(abs_diff)),
-			"pct_diff_gt_1m": round(float(np.mean(abs_diff > 1) * 100), 6),
-			"pct_diff_gt_2m": round(float(np.mean(abs_diff > 2) * 100), 6),
-			"pct_diff_gt_5m": round(float(np.mean(abs_diff > 5) * 100), 6),
+			"valid_cells": int(diff.size),
+			"excluded_sentinel_cells": int(reference_core.size - diff.size),
+			"exact_equal_pct": round(float(np.mean(diff == 0) * 100), 6) if diff.size else None,
+			"mean_abs_diff_m": round(float(np.mean(abs_diff)), 6) if diff.size else None,
+			"median_abs_diff_m": round(float(np.median(abs_diff)), 6) if diff.size else None,
+			"max_abs_diff_m": round(float(np.max(abs_diff)), 6) if diff.size else None,
+			"pct_diff_gt_1m": round(float(np.mean(abs_diff > 1) * 100), 6) if diff.size else None,
+			"pct_diff_gt_2m": round(float(np.mean(abs_diff > 2) * 100), 6) if diff.size else None,
+			"pct_diff_gt_5m": round(float(np.mean(abs_diff > 5) * 100), 6) if diff.size else None,
 		},
 		"levels": level_report,
 	}
