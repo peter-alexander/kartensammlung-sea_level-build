@@ -38,3 +38,5 @@ jobs:
           python tests/test_refinement_boundary.py
           python tests/test_grid.py
           python tests/test_coverage_planner.py
+          python tests/test_prepare_refinement_region.py
+          python tests/test_composite_threshold.py
