@@ -2,11 +2,15 @@
 
 import argparse
 import json
+import math
 from pathlib import Path
 
+import numpy as np
 from shapely.geometry import box, mapping, shape
+from shapely.ops import transform
 
 from coverage_planner import (
+	WEB_MERCATOR_WORLD,
 	exclusive_max_tile,
 	inclusive_min_tile,
 	lat_to_tile_y,
@@ -28,6 +32,47 @@ def load_source_geometry(path, source):
 		return geometry, feature.get("properties", {})
 
 	raise ValueError(f"Source {source!r} wurde in {path} nicht gefunden.")
+
+
+def buffer_geometry_web_mercator(geometry, distance_m):
+	if distance_m <= 0:
+		return geometry
+
+	radius = WEB_MERCATOR_WORLD / (2.0 * math.pi)
+
+	def forward(lon, lat, z=None):
+		lon = np.asarray(lon, dtype=np.float64)
+		lat = np.asarray(lat, dtype=np.float64)
+
+		x = radius * np.radians(lon)
+		y = radius * np.arcsinh(
+			np.tan(np.radians(lat))
+		)
+
+		if z is None:
+			return x, y
+
+		return x, y, z
+
+	def backward(x, y, z=None):
+		x = np.asarray(x, dtype=np.float64)
+		y = np.asarray(y, dtype=np.float64)
+
+		lon = np.degrees(x / radius)
+		lat = np.degrees(
+			np.arctan(
+				np.sinh(y / radius)
+			)
+		)
+
+		if z is None:
+			return lon, lat
+
+		return lon, lat, z
+
+	projected = transform(forward, geometry)
+	buffered = projected.buffer(distance_m)
+	return transform(backward, buffered)
 
 
 def parent_target_bounds(metadata):
@@ -62,6 +107,7 @@ def prepare_region(
 	*,
 	fine_zoom,
 	halo_tiles,
+	transition_buffer_pixels,
 	output_config,
 	output_core,
 ):
@@ -79,7 +125,21 @@ def prepare_region(
 		source,
 	)
 	target_bounds = parent_target_bounds(parent_meta)
-	core = source_geometry.intersection(box(*target_bounds))
+
+	tile_size = int(parent_grid["tile_size"])
+	fine_resolution = (
+		WEB_MERCATOR_WORLD
+		/ ((2 ** fine_zoom) * tile_size)
+	)
+	transition_buffer_m = (
+		float(transition_buffer_pixels)
+		* fine_resolution
+	)
+	refinement_geometry = buffer_geometry_web_mercator(
+		source_geometry,
+		transition_buffer_m,
+	)
+	core = refinement_geometry.intersection(box(*target_bounds))
 
 	if core.is_empty:
 		raise ValueError(
@@ -129,6 +189,8 @@ def prepare_region(
 			"parent_zoom": parent_zoom,
 			"fine_zoom": fine_zoom,
 			"halo_tiles": halo_tiles,
+			"transition_buffer_pixels": transition_buffer_pixels,
+			"transition_buffer_projected_m": transition_buffer_m,
 			"core_bounds": list(core.bounds),
 			"core_geojson": str(output_core),
 		},
@@ -155,11 +217,12 @@ def prepare_region(
 	)
 
 	source_bounds = source_geometry.bounds
+	refinement_bounds = refinement_geometry.bounds
 	clipped_sides = {
-		"west": source_bounds[0] < target_bounds[0],
-		"south": source_bounds[1] < target_bounds[1],
-		"east": source_bounds[2] > target_bounds[2],
-		"north": source_bounds[3] > target_bounds[3],
+		"west": refinement_bounds[0] < target_bounds[0],
+		"south": refinement_bounds[1] < target_bounds[1],
+		"east": refinement_bounds[2] > target_bounds[2],
+		"north": refinement_bounds[3] > target_bounds[3],
 	}
 
 	core_feature = {
@@ -169,6 +232,9 @@ def prepare_region(
 			"kind": "refinement-core",
 			"parent_target_bounds": list(target_bounds),
 			"source_coverage_bounds": list(source_bounds),
+			"refinement_geometry_bounds": list(refinement_bounds),
+			"transition_buffer_pixels": transition_buffer_pixels,
+			"transition_buffer_projected_m": transition_buffer_m,
 			"clipped_sides": clipped_sides,
 		},
 		"geometry": mapping(core),
@@ -183,8 +249,11 @@ def prepare_region(
 		"parent_zoom": parent_zoom,
 		"fine_zoom": fine_zoom,
 		"halo_tiles": halo_tiles,
+		"transition_buffer_pixels": transition_buffer_pixels,
+		"transition_buffer_projected_m": transition_buffer_m,
 		"core_bounds": list(core.bounds),
 		"source_coverage_bounds": list(source_bounds),
+		"refinement_geometry_bounds": list(refinement_bounds),
 		"parent_target_bounds": list(target_bounds),
 		"clipped_sides": clipped_sides,
 		"core_tile_range": {
@@ -218,12 +287,19 @@ def main():
 	parser.add_argument("--parent-grid", required=True)
 	parser.add_argument("--fine-zoom", type=int, required=True)
 	parser.add_argument("--halo-tiles", type=int, default=1)
+	parser.add_argument(
+		"--transition-buffer-pixels",
+		type=int,
+		default=0,
+	)
 	parser.add_argument("--output-config", required=True)
 	parser.add_argument("--output-core", required=True)
 	args = parser.parse_args()
 
 	if args.halo_tiles < 0:
 		parser.error("--halo-tiles muss >= 0 sein.")
+	if args.transition_buffer_pixels < 0:
+		parser.error("--transition-buffer-pixels muss >= 0 sein.")
 
 	report = prepare_region(
 		args.sources_geojson,
@@ -231,6 +307,7 @@ def main():
 		args.parent_grid,
 		fine_zoom=args.fine_zoom,
 		halo_tiles=args.halo_tiles,
+		transition_buffer_pixels=args.transition_buffer_pixels,
 		output_config=args.output_config,
 		output_core=args.output_core,
 	)
