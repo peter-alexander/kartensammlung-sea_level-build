@@ -1,10 +1,10 @@
 {
-	"name": "north-sea-v1-pilot",
+	"name": "north-sea-v1a-western-netherlands",
 	"bounds": {
-		"west": 1.5,
-		"south": 50.5,
-		"east": 9.5,
-		"north": 55.5
+		"west": 2.5,
+		"south": 51.2,
+		"east": 5.5,
+		"north": 53.2
 	},
 	"dem": {
 		"provider": "mapterhorn",
