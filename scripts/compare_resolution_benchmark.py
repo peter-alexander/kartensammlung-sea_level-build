@@ -8,17 +8,45 @@ from pathlib import Path
 import numpy as np
 
 
+def lonlat_to_mercator(lon, lat):
+	radius = 6378137.0
+	return (
+		radius * math.radians(lon),
+		radius * math.asinh(math.tan(math.radians(lat))),
+	)
+
+
+def crop_to_config_bounds(grid_meta, threshold):
+	grid = grid_meta["grid"]
+	bounds = grid_meta["config"]["bounds"]
+	west, south = lonlat_to_mercator(bounds["west"], bounds["south"])
+	east, north = lonlat_to_mercator(bounds["east"], bounds["north"])
+
+	col0 = int(round((west - grid["left"]) / grid["resolution"]))
+	col1 = int(round((east - grid["left"]) / grid["resolution"]))
+	row0 = int(round((grid["top"] - north) / grid["resolution"]))
+	row1 = int(round((grid["top"] - south) / grid["resolution"]))
+
+	if not (0 <= row0 < row1 <= grid["height"]):
+		raise ValueError(f"Ungültiger Benchmark-Zeilenausschnitt: {row0}:{row1}")
+	if not (0 <= col0 < col1 <= grid["width"]):
+		raise ValueError(f"Ungültiger Benchmark-Spaltenausschnitt: {col0}:{col1}")
+
+	return threshold[row0:row1, col0:col1]
+
+
 def load_run(path):
 	path = Path(path)
 	grid_meta = json.loads((path / "grid.json").read_text(encoding="utf-8"))
 	grid = grid_meta["grid"]
-	threshold = np.memmap(
+	threshold_full = np.memmap(
 		path / "threshold.u8",
 		dtype=np.uint8,
 		mode="r",
 		shape=(grid["height"], grid["width"]),
 	)
-	return grid, threshold
+	threshold = crop_to_config_bounds(grid_meta, threshold_full)
+	return grid_meta, threshold
 
 
 def lonlat_to_pixel(lon, lat, grid):
@@ -30,7 +58,13 @@ def lonlat_to_pixel(lon, lat, grid):
 	return row, col
 
 
-def sample_points(grid, threshold):
+def sample_points(grid_meta, threshold):
+	grid = grid_meta["grid"]
+	bounds = grid_meta["config"]["bounds"]
+	west, south = lonlat_to_mercator(bounds["west"], bounds["south"])
+	east, north = lonlat_to_mercator(bounds["east"], bounds["north"])
+	crop_col0 = int(round((west - grid["left"]) / grid["resolution"]))
+	crop_row0 = int(round((grid["top"] - north) / grid["resolution"]))
 	points = {
 		"Hoek van Holland": (4.134, 51.978),
 		"Maassluis": (4.250, 51.923),
@@ -42,7 +76,9 @@ def sample_points(grid, threshold):
 	result = {}
 	for name, (lon, lat) in points.items():
 		row, col = lonlat_to_pixel(lon, lat, grid)
-		if row < 0 or col < 0 or row >= grid["height"] or col >= grid["width"]:
+		row -= crop_row0
+		col -= crop_col0
+		if row < 0 or col < 0 or row >= threshold.shape[0] or col >= threshold.shape[1]:
 			result[name] = None
 		else:
 			result[name] = int(threshold[row, col])
@@ -109,8 +145,8 @@ def main():
 
 	runs = {}
 	for zoom, path in [(11,args.z11),(12,args.z12),(13,args.z13)]:
-		grid, threshold = load_run(path)
-		runs[zoom] = (grid, threshold)
+		grid_meta, threshold = load_run(path)
+		runs[zoom] = (grid_meta, threshold)
 
 	levels = [0,1,2,3,4,5,6,7,8,10,20,50,100]
 	report = {
@@ -119,16 +155,18 @@ def main():
 		"comparison_to_z13_center_sample": {},
 	}
 
-	for zoom, (grid, threshold) in runs.items():
-		center_lat = math.degrees(
-			math.atan(math.sinh(((grid["top"] + grid["bottom"]) / 2.0) / 6378137.0))
-		)
+	for zoom, (grid_meta, threshold) in runs.items():
+		grid = grid_meta["grid"]
+		center_lat = (
+			grid_meta["config"]["bounds"]["south"]
+			+ grid_meta["config"]["bounds"]["north"]
+		) / 2.0
 		ground_pixel = grid["resolution"] * math.cos(math.radians(center_lat))
 		report["runs"][str(zoom)] = {
 			"shape": [grid["height"],grid["width"]],
 			"cells": int(threshold.size),
 			"ground_pixel_m_approx": round(ground_pixel,3),
-			"sample_points": sample_points(grid,threshold),
+			"sample_points": sample_points(grid_meta,threshold),
 			"flooded_fraction": flooded_fraction(threshold,levels),
 			"sentinel_fraction": round(float(np.mean(threshold == 101)),8),
 		}
