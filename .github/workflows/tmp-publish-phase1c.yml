@@ -1,0 +1,118 @@
+name: Temporary publish Phase 1C
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-publish-phase1c.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download validated Phase 1C artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p tmp/phase1c-publish
+          gh run download 33434631894 \
+            --repo "${{ github.repository }}" \
+            --name phase-1c-hierarchical-composite \
+            --dir tmp/phase1c-publish
+
+          test -s tmp/phase1c-publish/sea-level-composite.pmtiles
+          test -s tmp/phase1c-publish/composite/report.json
+          test -s tmp/phase1c-publish/pyramid-report.json
+
+      - name: Prepare versioned output
+        run: |
+          rm -rf output/phase1c
+          mkdir -p output/phase1c
+
+          cp \
+            tmp/phase1c-publish/sea-level-composite.pmtiles \
+            output/phase1c/sea-level-threshold.pmtiles
+
+          cp \
+            tmp/phase1c-publish/composite/report.json \
+            output/phase1c/composite-report.json
+
+          cp \
+            tmp/phase1c-publish/pyramid-report.json \
+            output/phase1c/pyramid-report.json
+
+          cp \
+            tmp/phase1c-publish/pmtiles-header.json \
+            output/phase1c/pmtiles-header.json
+
+          cp \
+            tmp/phase1c-publish/pmtiles-metadata.json \
+            output/phase1c/pmtiles-metadata.json
+
+          cp \
+            tmp/phase1c-publish/coverage/plan.json \
+            output/phase1c/coverage-plan.json
+
+          cp \
+            tmp/phase1c-publish/refinement-config.report.json \
+            output/phase1c/refinement-report.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          output = Path("output/phase1c")
+          pmtiles = output / "sea-level-threshold.pmtiles"
+
+          manifest = {
+              "name": "phase-1c-hierarchical-composite",
+              "build_date": "2026-08-31",
+              "source_run_id": 33434631894,
+              "source_commit": "699cae17dd1ad30457e5cb353f6231d68834ba79",
+              "parent_zoom": 11,
+              "refinement_zoom": 12,
+              "minzoom": 6,
+              "maxzoom": 12,
+              "bounds": [2.5, 51.2, 5.5, 53.2],
+              "source": "nlahn5lowresfilled",
+              "transition_buffer_pixels": 128,
+              "halo_tiles": 1,
+              "pmtiles_bytes": pmtiles.stat().st_size,
+              "pmtiles_sha256": hashlib.sha256(
+                  pmtiles.read_bytes()
+              ).hexdigest(),
+              "qa": {
+                  "refinement_seam_max_abs_diff_m": 4,
+                  "refinement_seam_mean_abs_diff_m": 0.022928,
+                  "refinement_seam_pct_diff_gt_5m": 0.0,
+              },
+          }
+
+          (output / "manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f output/phase1c
+          git rm .github/workflows/tmp-publish-phase1c.yml
+
+          git commit -m "Publish Phase 1C hierarchical composite"
+          git push
