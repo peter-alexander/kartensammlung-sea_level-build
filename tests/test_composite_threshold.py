@@ -162,6 +162,89 @@ def main():
 		if slider["maximum"]["at_level_m"] != 4.0:
 			raise AssertionError(slider)
 
+		fine_grid_z13_path = tmp / "fine-grid-z13.json"
+		fine_threshold_z13_path = tmp / "fine-z13.u8"
+		core_z13_path = tmp / "core-z13.geojson"
+		output_z13_dir = tmp / "composite-z13"
+
+		fine_grid_z13_path.write_text(
+			json.dumps({
+				"grid": {
+					"zoom": 2,
+					"tile_size": 512,
+					"x_min": 0,
+					"x_max": 3,
+					"y_min": 0,
+					"y_max": 3,
+					"width": 8,
+					"height": 8,
+					"cells": 64,
+					"resolution": 0.5,
+					"left": 0.0,
+					"bottom": 0.0,
+					"right": 4.0,
+					"top": 4.0,
+				},
+			}),
+			encoding="utf-8",
+		)
+
+		fine_z13 = np.full(
+			(8, 8),
+			class_for_meters(9),
+			dtype=np.uint8,
+		)
+		fine_z13.tofile(fine_threshold_z13_path)
+
+		west_z13, south_z13 = mercator_to_lonlat(1.0, 1.0)
+		east_z13, north_z13 = mercator_to_lonlat(3.0, 3.0)
+		core_z13_path.write_text(
+			json.dumps({
+				"type": "Feature",
+				"properties": {"source": "synthetic-z13"},
+				"geometry": mapping(
+					box(
+						west_z13,
+						south_z13,
+						east_z13,
+						north_z13,
+					)
+				),
+			}),
+			encoding="utf-8",
+		)
+
+		report_z13 = build_composite(
+			base_grid_path,
+			base_threshold_path,
+			fine_grid_z13_path,
+			fine_threshold_z13_path,
+			core_z13_path,
+			output_z13_dir,
+			chunk_rows=2,
+		)
+
+		actual_z13 = np.fromfile(
+			output_z13_dir / "threshold.u8",
+			dtype=np.uint8,
+		).reshape((8, 8))
+		expected_z13 = np.repeat(
+			np.repeat(base, 4, axis=0),
+			4,
+			axis=1,
+		)
+		expected_z13[2:6, 2:6] = class_for_meters(9)
+
+		if not np.array_equal(actual_z13, expected_z13):
+			raise AssertionError(
+				f"expected_z13={expected_z13.tolist()} "
+				f"actual_z13={actual_z13.tolist()}"
+			)
+		if report_z13["factor"] != 4:
+			raise AssertionError(report_z13)
+		if report_z13["fine_pixels_written"] != 16:
+			raise AssertionError(report_z13)
+
 	print("ok")
 
 

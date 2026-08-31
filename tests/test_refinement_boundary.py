@@ -79,6 +79,49 @@ def main():
 		if report["active_boundary_seeds"] != 12:
 			raise AssertionError(report)
 
+		fine_grid_z13 = tmp / "fine-grid-z13.json"
+		output_z13 = tmp / "boundary-z13.u8"
+		write_grid(
+			fine_grid_z13,
+			width=8,
+			height=8,
+			resolution=0.5,
+			left=0.0,
+			top=4.0,
+		)
+
+		report_z13 = build_boundary(
+			coarse_grid,
+			coarse_threshold,
+			fine_grid_z13,
+			output_z13,
+		)
+		actual_z13 = np.fromfile(
+			output_z13,
+			dtype=np.uint8,
+		).reshape((8, 8))
+
+		if not np.all(actual_z13[0, :4] == 1):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[0, 4:] == 2):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[-1, :4] == 3):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[-1, 4:] == 4):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[1:4, 0] == 1):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[4:-1, 0] == 3):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[1:4, -1] == 2):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[4:-1, -1] == 4):
+			raise AssertionError(actual_z13.tolist())
+		if not np.all(actual_z13[1:-1, 1:-1] == 255):
+			raise AssertionError(actual_z13.tolist())
+		if report_z13["active_boundary_seeds"] != 28:
+			raise AssertionError(report_z13)
+
 	print("ok")
 
 
