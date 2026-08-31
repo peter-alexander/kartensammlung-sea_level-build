@@ -115,6 +115,18 @@ def main():
 		if report["work_tile_count"] != 9:
 			raise AssertionError(report)
 
+		core_feature = json.loads(output_core.read_text())
+		properties = core_feature["properties"]
+		if properties["parent_target_bounds"] != [
+			west,
+			south,
+			east,
+			north,
+		]:
+			raise AssertionError(properties)
+		if any(properties["clipped_sides"].values()):
+			raise AssertionError(properties)
+
 	print("ok")
 
 
