@@ -1,0 +1,8 @@
+tmp/
+cache/
+output/
+*.pmtiles
+*.tif
+*.tiff
+__pycache__/
+*.pyc
