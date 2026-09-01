@@ -1,0 +1,377 @@
+name: Temporary adaptive 128 domain benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-adaptive-128-domain-benchmark.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build solver
+        run: |
+          mkdir -p build tmp/adaptive-128 cache tmp/ocean-source
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
+            -o build/priority_flood_quantized
+
+      - name: Download safe coarse work regions
+        uses: actions/download-artifact@v4
+        with:
+          name: safe-coarse-work-regions-factor16
+          path: tmp/adaptive-128/coarse
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33542989761
+
+      - name: Download adaptive component one plan
+        uses: actions/download-artifact@v4
+        with:
+          name: adaptive-component-one-plan
+          path: tmp/adaptive-128/full-plan
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33546168321
+
+      - name: Build connected 128 domain sample
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import json
+          from collections import Counter, deque
+          from pathlib import Path
+
+          import sys
+          sys.path.insert(0, "scripts")
+
+          from process_adaptive_lazy_domains import (
+              build_adjacencies,
+          )
+
+          root = Path("tmp/adaptive-128")
+          plan = json.loads(
+              (
+                  root
+                  / "full-plan/adaptive-component-1.json"
+              ).read_text()
+          )
+
+          domains = {}
+          seed_keys = []
+          for index, raw in enumerate(
+              plan["domains"],
+              start=1,
+          ):
+              domain = {
+                  **raw,
+                  "id": index,
+                  "width": int(raw["fine_width"]),
+                  "height": int(raw["fine_height"]),
+              }
+              domains[index] = domain
+
+              if (
+                  int(raw["coarse_x0"]) == 583
+                  and int(raw["coarse_y0"]) == 826
+                  and int(raw["zoom"]) == 11
+              ):
+                  seed_keys.append(index)
+              if (
+                  int(raw["coarse_x0"]) == 583
+                  and int(raw["coarse_y0"]) == 827
+                  and int(raw["zoom"]) == 16
+              ):
+                  seed_keys.append(index)
+
+          if len(seed_keys) != 2:
+              raise RuntimeError(
+                  f"Erwartete 2 Seeds, bekam {seed_keys}."
+              )
+
+          _adjacencies, by_domain = build_adjacencies(
+              domains
+          )
+
+          queue = deque(seed_keys)
+          seen = set(seed_keys)
+          selected = []
+
+          while queue and len(selected) < 128:
+              key = queue.popleft()
+              selected.append(key)
+
+              neighbors = []
+              for adjacency in by_domain.get(key, ()):
+                  other = (
+                      adjacency["b"]
+                      if adjacency["a"] == key
+                      else adjacency["a"]
+                  )
+                  if other not in seen:
+                      neighbors.append(other)
+
+              neighbors.sort(
+                  key=lambda item: (
+                      int(domains[item]["zoom"]),
+                      int(item),
+                  )
+              )
+              for other in neighbors:
+                  seen.add(other)
+                  queue.append(other)
+
+          if len(selected) != 128:
+              raise RuntimeError(
+                  f"Nur {len(selected)} Domains erreicht."
+              )
+
+          sample_domains = []
+          for new_id, old_id in enumerate(
+              selected,
+              start=1,
+          ):
+              raw = domains[old_id]
+              item = {
+                  key: value
+                  for key, value in raw.items()
+                  if key not in ("id", "width", "height")
+              }
+              item["id"] = new_id
+              sample_domains.append(item)
+
+          mini = {
+              key: value
+              for key, value in plan.items()
+              if key != "domains"
+          }
+          mini["domains"] = sample_domains
+          mini["domain_count"] = len(sample_domains)
+          mini["benchmark"] = {
+              "kind": "connected-bfs",
+              "domain_count": 128,
+              "seed_old_ids": seed_keys,
+          }
+
+          counts = Counter(
+              int(item["zoom"])
+              for item in sample_domains
+          )
+          cells = sum(
+              int(item["fine_cells"])
+              for item in sample_domains
+          )
+
+          (root / "mini-plan.json").write_text(
+              json.dumps(mini, indent=2) + "\n"
+          )
+          (root / "sample-summary.json").write_text(
+              json.dumps({
+                  "domain_count": len(sample_domains),
+                  "zoom_domain_counts": {
+                      str(key): value
+                      for key, value in sorted(
+                          counts.items()
+                      )
+                  },
+                  "initial_fine_cells": cells,
+              }, indent=2) + "\n"
+          )
+
+          print(
+              (root / "sample-summary.json").read_text()
+          )
+          PY
+
+      - name: Prefetch sample Mapterhorn tiles
+        run: |
+          set -euo pipefail
+
+          /usr/bin/time -v \
+            python scripts/prefetch_adaptive_mapterhorn.py \
+              --adaptive-plan tmp/adaptive-128/mini-plan.json \
+              --parent-grid tmp/adaptive-128/coarse/parent/grid.json \
+              --cache-dir cache \
+              --workers 24 \
+              --download \
+              --output tmp/adaptive-128/prefetch.json \
+            2>&1 | tee tmp/adaptive-128/prefetch.log
+
+      - name: Download ocean polygons
+        run: |
+          set -euo pipefail
+
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+            -d tmp/ocean-source
+
+      - name: Run cached adaptive sample
+        run: |
+          set -euo pipefail
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          /usr/bin/time -v \
+            python scripts/process_adaptive_mapterhorn_work_region.py \
+              --components-report tmp/adaptive-128/coarse/factor-16/components.json \
+              --spans tmp/adaptive-128/coarse/factor-16/components.rle \
+              --parent-grid tmp/adaptive-128/coarse/parent/grid.json \
+              --component-id 1 \
+              --coarse-factor 16 \
+              --sea-vector "$SHP" \
+              --cache-dir cache \
+              --work-dir tmp/adaptive-128/work \
+              --output-dir tmp/adaptive-128/output \
+              --solver build/priority_flood_quantized \
+              --levels "$(python scripts/threshold_levels.py --csv)" \
+              --workers 8 \
+              --adaptive-plan tmp/adaptive-128/mini-plan.json \
+            2>&1 | tee tmp/adaptive-128/solver.log
+
+      - name: Summarize benchmark
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path("tmp/adaptive-128")
+          sample = json.loads(
+              (root / "sample-summary.json").read_text()
+          )
+          prefetch = json.loads(
+              (root / "prefetch.json").read_text()
+          )
+          report = json.loads(
+              (root / "output/report.json").read_text()
+          )
+
+          def time_stats(path):
+              text = Path(path).read_text()
+              elapsed = re.search(
+                  r"Elapsed \(wall clock\) time "
+                  r"\(h:mm:ss or m:ss\):\s*([^\n]+)",
+                  text,
+              )
+              peak = re.search(
+                  r"Maximum resident set size "
+                  r"\(kbytes\):\s*(\d+)",
+                  text,
+              )
+              return {
+                  "elapsed": (
+                      elapsed.group(1).strip()
+                      if elapsed
+                      else None
+                  ),
+                  "peak_rss_kb": (
+                      int(peak.group(1))
+                      if peak
+                      else None
+                  ),
+              }
+
+          solver = report["solver"]
+          summary = {
+              "sample": sample,
+              "prefetch": prefetch,
+              "solver": {
+                  key: solver[key]
+                  for key in (
+                      "domain_count",
+                      "adjacency_count",
+                      "solver_runs",
+                      "materializations",
+                      "boundary_improvements",
+                      "external_sea_improvements",
+                      "internal_edge_pixels_excluded_from_external_sea",
+                      "peak_materialized_cells",
+                      "all_domain_work_deleted",
+                  )
+              },
+              "output_threshold_bytes": (
+                  report["output"]["threshold_bytes"]
+              ),
+              "timing": {
+                  "prefetch": time_stats(
+                      root / "prefetch.log"
+                  ),
+                  "solver": time_stats(
+                      root / "solver.log"
+                  ),
+              },
+          }
+
+          (root / "summary.json").write_text(
+              json.dumps(summary, indent=2) + "\n"
+          )
+          print(json.dumps(summary, indent=2))
+
+          if solver["domain_count"] != 128:
+              raise AssertionError(summary)
+          if solver["materializations"] < 128:
+              raise AssertionError(summary)
+          if solver["boundary_improvements"] <= 0:
+              raise AssertionError(summary)
+          if not solver["all_domain_work_deleted"]:
+              raise AssertionError(summary)
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-128-domain-benchmark
+          path: |
+            tmp/adaptive-128/summary.json
+            tmp/adaptive-128/sample-summary.json
+            tmp/adaptive-128/prefetch.json
+            tmp/adaptive-128/output/report.json
+            tmp/adaptive-128/prefetch.log
+            tmp/adaptive-128/solver.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-adaptive-128-domain-benchmark.yml ]; then
+            git rm .github/workflows/tmp-adaptive-128-domain-benchmark.yml
+            git commit -m "Remove temporary adaptive 128 domain benchmark"
+            git pull --rebase
+            git push
+          fi
