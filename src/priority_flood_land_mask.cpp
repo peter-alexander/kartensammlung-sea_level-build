@@ -382,7 +382,7 @@ static bool touchesSea(
 }
 
 static std::vector<std::uint8_t> solveLandMask(
-	const std::vector<float>& elevation,
+	const std::string& elevationPath,
 	const PackedBits& landMask,
 	const PackedBits& seaBits,
 	std::uint32_t width,
@@ -411,40 +411,94 @@ static std::vector<std::uint8_t> solveLandMask(
 	std::size_t coastalSeeds = 0;
 	std::size_t maskedAboveMax = 0;
 
-	for (std::size_t index = 0; index < cellCount; ++index) {
-		if (!landMask.get(index)) {
-			continue;
-		}
-
-		++landCells;
-		const std::uint8_t cellLevel =
-			quantizedElevationLevel(
-				elevation[index],
-				levels
-			);
-		elevationLevel[index] = cellLevel;
-
-		if (cellLevel == sentinel) {
-			++maskedAboveMax;
-			continue;
-		}
-
-		threshold[index] = unvisited;
-
-		if (!touchesSea(
-			seaBits,
-			index,
-			width,
-			height
-		)) {
-			continue;
-		}
-
-		threshold[index] = cellLevel;
-		buckets[cellLevel].push_back(
-			static_cast<std::uint32_t>(index)
+	if (
+		fileSize(elevationPath)
+		!= static_cast<std::uint64_t>(
+			cellCount * sizeof(float)
+		)
+	) {
+		throw std::runtime_error(
+			"Unerwartete Elevation-Dateigröße."
 		);
-		++coastalSeeds;
+	}
+
+	constexpr std::size_t chunkCells = 1u << 20;
+	std::vector<float> elevationChunk(chunkCells);
+	std::ifstream elevationInput(
+		elevationPath,
+		std::ios::binary
+	);
+	if (!elevationInput) {
+		throw std::runtime_error(
+			"Elevation konnte nicht geöffnet werden."
+		);
+	}
+
+	for (
+		std::size_t offset = 0;
+		offset < cellCount;
+		offset += chunkCells
+	) {
+		const std::size_t count = std::min(
+			chunkCells,
+			cellCount - offset
+		);
+
+		elevationInput.read(
+			reinterpret_cast<char*>(
+				elevationChunk.data()
+			),
+			static_cast<std::streamsize>(
+				count * sizeof(float)
+			)
+		);
+		if (!elevationInput) {
+			throw std::runtime_error(
+				"Elevation konnte nicht vollständig "
+				"gelesen werden."
+			);
+		}
+
+		for (
+			std::size_t local = 0;
+			local < count;
+			++local
+		) {
+			const std::size_t index = offset + local;
+			if (!landMask.get(index)) {
+				continue;
+			}
+
+			++landCells;
+			const std::uint8_t cellLevel =
+				quantizedElevationLevel(
+					elevationChunk[local],
+					levels
+				);
+			elevationLevel[index] = cellLevel;
+
+			if (cellLevel == sentinel) {
+				++maskedAboveMax;
+				continue;
+			}
+
+			threshold[index] = unvisited;
+
+			if (!touchesSea(
+				seaBits,
+				index,
+				width,
+				height
+			)) {
+				continue;
+			}
+
+			threshold[index] = cellLevel;
+			buckets[cellLevel].push_back(
+				static_cast<std::uint32_t>(index)
+			);
+			++coastalSeeds;
+		}
 	}
 
 	if (coastalSeeds == 0 && landCells != 0) {
@@ -583,10 +637,6 @@ int main(int argc, char** argv) {
 			);
 		}
 
-		std::vector<float> elevation = readBinary<float>(
-			options.elevationPath,
-			cellCount
-		);
 		PackedBits landMask = readPacked(
 			options.landMaskPath,
 			cellCount
@@ -598,7 +648,7 @@ int main(int argc, char** argv) {
 
 		const std::vector<std::uint8_t> threshold =
 			solveLandMask(
-				elevation,
+				options.elevationPath,
 				landMask,
 				seaBits,
 				options.width,
