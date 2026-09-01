@@ -1,6 +1,7 @@
 numpy
 Pillow
 rasterio
+Fiona
 geopandas
 mapbox-vector-tile
 shapely
