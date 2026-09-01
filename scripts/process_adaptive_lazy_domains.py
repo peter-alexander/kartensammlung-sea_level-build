@@ -547,6 +547,7 @@ def process_adaptive_lazy_domains(
 	resume=False,
 	max_runs_this_invocation=0,
 	write_outputs_during_convergence=True,
+	initial_domain_ids=None,
 ):
 	levels = [
 		value
@@ -672,7 +673,26 @@ def process_adaptive_lazy_domains(
 				counters[key] = int(value)
 		checkpoint_completed = checkpoint["completed"]
 	else:
-		queue = deque(domains.keys())
+		if initial_domain_ids is None:
+			queue = deque(domains.keys())
+		else:
+			initial_keys = []
+			seen_initial = set()
+			for value in initial_domain_ids:
+				key = int(value)
+				if key not in domains:
+					raise ValueError(
+						f"Unbekannte initiale Domain {key}."
+					)
+				if key in seen_initial:
+					continue
+				seen_initial.add(key)
+				initial_keys.append(key)
+			if not initial_keys:
+				raise ValueError(
+					"initial_domain_ids darf nicht leer sein."
+				)
+			queue = deque(initial_keys)
 		checkpoint_completed = False
 
 	queued = set(queue)
@@ -872,6 +892,14 @@ def process_adaptive_lazy_domains(
 				"completed": False,
 				"checkpoint_path": str(checkpoint_path),
 				"queue_remaining": len(queue),
+				"initial_domain_count": (
+					len(domains)
+					if initial_domain_ids is None
+					else len({
+						int(value)
+						for value in initial_domain_ids
+					})
+				),
 				"domain_count": len(domains),
 				"adjacency_count": len(adjacencies),
 				**counters,
@@ -1038,6 +1066,14 @@ def process_adaptive_lazy_domains(
 			else None
 		),
 		"queue_remaining": 0,
+		"initial_domain_count": (
+			len(domains)
+			if initial_domain_ids is None
+			else len({
+				int(value)
+				for value in initial_domain_ids
+			})
+		),
 		"domain_count": len(domains),
 		"adjacency_count": len(adjacencies),
 		"solver_runs": counters["solver_runs"],
