@@ -209,6 +209,95 @@ def resolve_pmtiles_fallbacks(
 	return resolved, sorted(unresolved)
 
 
+def resolve_http_fallbacks(
+	missing_targets,
+	target_zoom,
+	fallback_min_zoom,
+	cache_dir,
+	workers,
+):
+	if fallback_min_zoom is None:
+		return {}, list(missing_targets), []
+
+	fallback_min_zoom = int(fallback_min_zoom)
+	if fallback_min_zoom < 0:
+		raise ValueError(
+			"overzoom_fallback_minzoom muss >= 0 sein."
+		)
+	if fallback_min_zoom >= target_zoom:
+		raise ValueError(
+			"overzoom_fallback_minzoom muss kleiner als Processing-Zoom sein."
+		)
+
+	unresolved = set(missing_targets)
+	resolved = {}
+	parent_tiles = []
+
+	for parent_zoom in range(
+		target_zoom - 1,
+		fallback_min_zoom - 1,
+		-1,
+	):
+		if not unresolved:
+			break
+
+		factor = 2 ** (target_zoom - parent_zoom)
+		parent_coords = sorted({
+			(
+				target_x // factor,
+				target_y // factor,
+			)
+			for target_x, target_y in unresolved
+		})
+		tasks = [
+			(
+				parent_x,
+				parent_y,
+				tile_url(parent_zoom, parent_x, parent_y),
+				tile_path(
+					cache_dir,
+					parent_zoom,
+					parent_x,
+					parent_y,
+				),
+			)
+			for parent_x, parent_y in parent_coords
+		]
+		status = download_task_set(
+			tasks,
+			workers,
+			label_zoom=parent_zoom,
+		)
+		available = {
+			(parent_x, parent_y)
+			for parent_x, parent_y in parent_coords
+			if status[(parent_x, parent_y)] != "missing"
+		}
+
+		for parent_x, parent_y in sorted(available):
+			parent_tiles.append({
+				"zoom": parent_zoom,
+				"x": parent_x,
+				"y": parent_y,
+				"status": status[(parent_x, parent_y)],
+			})
+
+		for target_x, target_y in list(unresolved):
+			parent_x = target_x // factor
+			parent_y = target_y // factor
+			if (parent_x, parent_y) not in available:
+				continue
+
+			resolved[(target_x, target_y)] = {
+				"parent_zoom": parent_zoom,
+				"parent_x": parent_x,
+				"parent_y": parent_y,
+			}
+			unresolved.remove((target_x, target_y))
+
+	return resolved, sorted(unresolved), parent_tiles
+
+
 def pmtiles_tile_bytes(reader, compression, zoom, x, y):
 	data = reader.get(zoom, x, y)
 	if data is None:
@@ -317,30 +406,59 @@ def main():
 	fallback_reader = None
 	fallback_compression = None
 	fallback_path = None
+	fallback_parent_tiles = []
+	fallback_mode = config.get("dem", {}).get(
+		"overzoom_fallback_mode"
+	)
 
 	if requested_missing and fallback_min_zoom is not None:
-		if not args.fallback_pmtiles:
-			raise RuntimeError(
-				"DEM-Fallback ist konfiguriert, aber "
-				"--fallback-pmtiles fehlt."
+		if fallback_mode is None:
+			fallback_mode = (
+				"pmtiles"
+				if args.fallback_pmtiles
+				else "http"
 			)
 
-		from pmtiles.reader import MmapSource, Reader
+		if fallback_mode == "pmtiles":
+			if not args.fallback_pmtiles:
+				raise RuntimeError(
+					"PMTiles-Fallback ist konfiguriert, aber "
+					"--fallback-pmtiles fehlt."
+				)
 
-		fallback_path = Path(args.fallback_pmtiles)
-		fallback_file = fallback_path.open("rb")
-		fallback_reader = Reader(MmapSource(fallback_file))
-		fallback_compression = fallback_reader.header()[
-			"tile_compression"
-		]
-		fallbacks, unresolved_missing = (
-			resolve_pmtiles_fallbacks(
+			from pmtiles.reader import MmapSource, Reader
+
+			fallback_path = Path(args.fallback_pmtiles)
+			fallback_file = fallback_path.open("rb")
+			fallback_reader = Reader(MmapSource(fallback_file))
+			fallback_compression = fallback_reader.header()[
+				"tile_compression"
+			]
+			fallbacks, unresolved_missing = (
+				resolve_pmtiles_fallbacks(
+					requested_missing,
+					grid["zoom"],
+					fallback_min_zoom,
+					fallback_reader,
+				)
+			)
+		elif fallback_mode == "http":
+			(
+				fallbacks,
+				unresolved_missing,
+				fallback_parent_tiles,
+			) = resolve_http_fallbacks(
 				requested_missing,
 				grid["zoom"],
 				fallback_min_zoom,
-				fallback_reader,
+				cache_dir,
+				args.workers,
 			)
-		)
+		else:
+			raise ValueError(
+				"Unbekannter overzoom_fallback_mode: "
+				f"{fallback_mode!r}"
+			)
 	else:
 		fallbacks = {}
 		unresolved_missing = list(requested_missing)
@@ -368,14 +486,26 @@ def main():
 			fallback["parent_y"],
 		)
 		if parent_key not in decoded_fallback_parents:
-			data = pmtiles_tile_bytes(
-				fallback_reader,
-				fallback_compression,
-				*parent_key,
-			)
-			decoded_fallback_parents[parent_key] = (
-				decode_terrarium_bytes(data)
-			)
+			if fallback_mode == "pmtiles":
+				data = pmtiles_tile_bytes(
+					fallback_reader,
+					fallback_compression,
+					*parent_key,
+				)
+				decoded = decode_terrarium_bytes(data)
+			elif fallback_mode == "http":
+				decoded = decode_terrarium(
+					tile_path(
+						cache_dir,
+						*parent_key,
+					)
+				)
+			else:
+				raise RuntimeError(
+					"Fallback-Tile ohne gültigen Fallback-Modus."
+				)
+
+			decoded_fallback_parents[parent_key] = decoded
 
 		fallback_tiles.append({
 			"x": x,
@@ -417,6 +547,11 @@ def main():
 				requested_missing
 			),
 			"overzoom_fallback_minzoom": fallback_min_zoom,
+			"overzoom_fallback_mode": fallback_mode,
+			"fallback_parent_tile_count": len(
+				fallback_parent_tiles
+			),
+			"fallback_parent_tiles": fallback_parent_tiles,
 			"fallback_pmtiles": (
 				str(fallback_path)
 				if fallback_path is not None
