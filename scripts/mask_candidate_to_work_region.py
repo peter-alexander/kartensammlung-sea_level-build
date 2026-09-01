@@ -114,17 +114,50 @@ def map_intervals_to_fine(
 			col1 = min(int(fine_grid["width"]), col1)
 			if col1 <= col0:
 				continue
-			if col0 % 8 != 0 or col1 % 8 != 0:
-				raise ValueError(
-					"Component-Grenzen sind nicht byte-aligned "
-					"im Fine-Raster."
-				)
 			fine_intervals.append((col0, col1))
 
 		if fine_intervals:
 			mapped[int(coarse_row)] = fine_intervals
 
 	return mapped, scale_rounded
+
+
+def copy_bit_interval(source_row, output_row, col0, col1):
+	if col1 <= col0:
+		return
+
+	first_byte = col0 >> 3
+	last_byte = (col1 - 1) >> 3
+	first_bit = col0 & 7
+	last_bit = (col1 - 1) & 7
+
+	if first_byte == last_byte:
+		mask = (
+			((1 << (last_bit - first_bit + 1)) - 1)
+			<< first_bit
+		)
+		output_row[first_byte] |= (
+			source_row[first_byte]
+			& np.uint8(mask)
+		)
+		return
+
+	first_mask = np.uint8((0xFF << first_bit) & 0xFF)
+	output_row[first_byte] |= (
+		source_row[first_byte] & first_mask
+	)
+
+	if last_byte > first_byte + 1:
+		output_row[first_byte + 1:last_byte] = (
+			source_row[first_byte + 1:last_byte]
+		)
+
+	last_mask = np.uint8(
+		(1 << (last_bit + 1)) - 1
+	)
+	output_row[last_byte] |= (
+		source_row[last_byte] & last_mask
+	)
 
 
 def fine_row_to_coarse_row(
@@ -254,10 +287,11 @@ def mask_candidate(
 				dtype=np.uint8,
 			)
 			for col0, col1 in intervals:
-				byte0 = col0 // 8
-				byte1 = col1 // 8
-				output_row[byte0:byte1] = (
-					source_row[byte0:byte1]
+				copy_bit_interval(
+					source_row,
+					output_row,
+					col0,
+					col1,
 				)
 
 			output_candidate_cells += int(
