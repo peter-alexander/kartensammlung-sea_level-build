@@ -19,6 +19,56 @@ def pack_mask(mask, path):
 	bits.tofile(path)
 
 
+def run_components(candidate, sea, root, name):
+	candidate_path = root / f"{name}-candidate.bit"
+	sea_path = root / f"{name}-sea.u8"
+	report_path = root / f"{name}-report.json"
+
+	pack_mask(candidate, candidate_path)
+	sea.tofile(sea_path)
+
+	subprocess.run([
+		str(ROOT / "build" / "candidate_land_components"),
+		"--candidate-mask", str(candidate_path),
+		"--sea-mask", str(sea_path),
+		"--report", str(report_path),
+		"--width", str(candidate.shape[1]),
+		"--height", str(candidate.shape[0]),
+	], check=True)
+
+	return json.loads(report_path.read_text())
+
+
+def test_mixed_coastal_cell_must_not_split_work_region(root):
+	candidate = np.asarray([[1, 1, 1]], dtype=bool)
+
+	# OR-Sea markiert die mittlere Grobzelle als Meer, obwohl sie
+	# nur teilweise Meer enthalten könnte. Das trennt Land künstlich.
+	sea_any = np.asarray([[0, 1, 0]], dtype=np.uint8)
+	unsafe = run_components(
+		candidate,
+		sea_any,
+		root,
+		"mixed-unsafe",
+	)
+	if unsafe["component_count"] != 2:
+		raise AssertionError(unsafe)
+
+	# Pure-Sea entfernt nur garantiert vollständig aus Meer
+	# bestehende Grobzellen. Die mögliche Landbrücke bleibt erhalten.
+	sea_all = np.asarray([[0, 0, 0]], dtype=np.uint8)
+	safe = run_components(
+		candidate,
+		sea_all,
+		root,
+		"mixed-safe",
+	)
+	if safe["component_count"] != 1:
+		raise AssertionError(safe)
+	if safe["land_candidate_cells"] != 3:
+		raise AssertionError(safe)
+
+
 def main():
 	# Zwei Landgebiete sind über dieselbe Meeresfläche verbunden.
 	# Für die Komponentenzerlegung müssen es trotzdem zwei
@@ -41,6 +91,7 @@ def main():
 
 	with tempfile.TemporaryDirectory() as tmp:
 		tmp = Path(tmp)
+		test_mixed_coastal_cell_must_not_split_work_region(tmp)
 		candidate_path = tmp / "candidate.bit"
 		sea_path = tmp / "sea.u8"
 		report_path = tmp / "report.json"
