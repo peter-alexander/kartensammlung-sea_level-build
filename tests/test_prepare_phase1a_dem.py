@@ -8,8 +8,11 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import prepare_phase1a_dem as dem
+
 from prepare_phase1a_dem import (
 	overzoom_parent_tile,
+	resolve_http_fallbacks,
 	resolve_pmtiles_fallbacks,
 	write_elevation_strips,
 )
@@ -111,6 +114,70 @@ def test_pmtiles_fallback_resolution():
 
 
 
+def test_http_fallback_resolution():
+	import tempfile
+
+	available = {
+		(12, 5, 6),
+		(11, 3, 3),
+	}
+
+	def fake_download_task_set(tasks, workers, *, label_zoom=None):
+		status = {}
+		for x, y, _url, path in tasks:
+			if (label_zoom, x, y) in available:
+				Path(path).parent.mkdir(
+					parents=True,
+					exist_ok=True,
+				)
+				Path(path).write_bytes(b"tile")
+				status[(x, y)] = "downloaded"
+			else:
+				status[(x, y)] = "missing"
+		return status
+
+	original = dem.download_task_set
+	dem.download_task_set = fake_download_task_set
+	try:
+		with tempfile.TemporaryDirectory() as tmp:
+			resolved, unresolved, parent_tiles = (
+				resolve_http_fallbacks(
+					[
+						(10, 12),
+						(11, 12),
+						(12, 13),
+						(30, 30),
+					],
+					target_zoom=13,
+					fallback_min_zoom=11,
+					cache_dir=tmp,
+					workers=1,
+				)
+			)
+	finally:
+		dem.download_task_set = original
+
+	if resolved[(10, 12)]["parent_zoom"] != 12:
+		raise AssertionError("HTTP-Z12-Fallback wurde nicht bevorzugt.")
+	if resolved[(11, 12)]["parent_zoom"] != 12:
+		raise AssertionError("Gemeinsamer HTTP-Z12-Parent fehlt.")
+	if resolved[(12, 13)]["parent_zoom"] != 11:
+		raise AssertionError("HTTP-Z11-Fallback wurde nicht gefunden.")
+	if unresolved != [(30, 30)]:
+		raise AssertionError(
+			f"Unerwartete HTTP-unresolved-Liste: {unresolved}"
+		)
+
+	parent_keys = {
+		(item["zoom"], item["x"], item["y"])
+		for item in parent_tiles
+	}
+	if (12, 5, 6) not in parent_keys or (11, 3, 3) not in parent_keys:
+		raise AssertionError(
+			f"Fallback-Parentreport unvollständig: {parent_keys}"
+		)
+
+
 def test_streaming_elevation_strips():
 	import tempfile
 
@@ -170,6 +237,7 @@ def test_streaming_elevation_strips():
 def main():
 	test_overzoom()
 	test_pmtiles_fallback_resolution()
+	test_http_fallback_resolution()
 	test_streaming_elevation_strips()
 	print("ok")
 
