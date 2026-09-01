@@ -312,6 +312,8 @@ def process_adaptive_lazy_domains(
 		height = int(spec["fine_height"])
 		domains[key] = {
 			**spec,
+			"width": int(spec["fine_width"]),
+			"height": int(spec["fine_height"]),
 			"incoming": {
 				"top": np.full(
 					width,
