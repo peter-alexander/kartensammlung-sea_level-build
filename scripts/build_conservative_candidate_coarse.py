@@ -26,7 +26,7 @@ def build_conservative_coarse(
 	width,
 	height,
 	factor,
-	chunk_coarse_rows=32,
+	chunk_coarse_rows=0,
 ):
 	width = int(width)
 	height = int(height)
@@ -41,8 +41,10 @@ def build_conservative_coarse(
 		raise ValueError(
 			"width und height müssen durch factor teilbar sein."
 		)
-	if chunk_coarse_rows <= 0:
-		raise ValueError("chunk_coarse_rows muss > 0 sein.")
+	if chunk_coarse_rows < 0:
+		raise ValueError("chunk_coarse_rows muss >= 0 sein.")
+	if chunk_coarse_rows == 0:
+		chunk_coarse_rows = max(1, 64 // factor)
 
 	cell_count = width * height
 	require_file_size(
@@ -153,6 +155,8 @@ def build_conservative_coarse(
 		"fine_height": height,
 		"fine_cells": cell_count,
 		"factor": factor,
+		"chunk_coarse_rows": chunk_coarse_rows,
+		"chunk_fine_rows": chunk_coarse_rows * factor,
 		"coarse_width": coarse_width,
 		"coarse_height": coarse_height,
 		"coarse_cells": coarse_cells,
@@ -179,7 +183,7 @@ def main():
 	parser.add_argument("--width", type=int, required=True)
 	parser.add_argument("--height", type=int, required=True)
 	parser.add_argument("--factor", type=int, required=True)
-	parser.add_argument("--chunk-coarse-rows", type=int, default=32)
+	parser.add_argument("--chunk-coarse-rows", type=int, default=0)
 	args = parser.parse_args()
 
 	report = build_conservative_coarse(
