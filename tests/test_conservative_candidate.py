@@ -41,6 +41,7 @@ def main():
 		fine_report = tmp / "fine-report.json"
 		coarse_elevation = tmp / "coarse-elevation.f32"
 		coarse_sea = tmp / "coarse-sea.u8"
+		coarse_pure_sea = tmp / "coarse-pure-sea.u8"
 		coarse_report = tmp / "coarse-input-report.json"
 		coarse_mask = tmp / "coarse-candidate.bit"
 		coarse_candidate_report = tmp / "coarse-candidate-report.json"
@@ -63,6 +64,7 @@ def main():
 			"--sea-mask", str(fine_sea),
 			"--output-elevation", str(coarse_elevation),
 			"--output-sea-mask", str(coarse_sea),
+			"--output-pure-sea-mask", str(coarse_pure_sea),
 			"--report", str(coarse_report),
 			"--width", "8",
 			"--height", "8",
@@ -101,6 +103,20 @@ def main():
 			raise AssertionError(coarse_input)
 		if coarse_input["sea_rule"] != "logical-or-of-children":
 			raise AssertionError(coarse_input)
+		if (
+			coarse_input["pure_sea_rule"]
+			!= "logical-and-of-children"
+		):
+			raise AssertionError(coarse_input)
+		if coarse_input["pure_sea_coarse_cells"] != 0:
+			raise AssertionError(coarse_input)
+
+		pure_sea = np.fromfile(
+			coarse_pure_sea,
+			dtype=np.uint8,
+		).reshape((4, 4))
+		if np.count_nonzero(pure_sea) != 0:
+			raise AssertionError(pure_sea)
 
 		if comparison["false_negative_cells"] != 0:
 			raise AssertionError(comparison)
