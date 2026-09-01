@@ -228,6 +228,50 @@ def pmtiles_tile_bytes(reader, compression, zoom, x, y):
 	)
 
 
+def write_elevation_strips(
+	elevation_path,
+	grid,
+	tile_loader,
+):
+	tile_size = int(grid["tile_size"])
+	width = int(grid["width"])
+	x_min = int(grid["x_min"])
+	x_max = int(grid["x_max"])
+	y_min = int(grid["y_min"])
+	y_max = int(grid["y_max"])
+
+	with open(elevation_path, "wb") as output:
+		for y in range(y_min, y_max + 1):
+			strip = np.full(
+				(tile_size, width),
+				np.nan,
+				dtype=np.float32,
+			)
+
+			for x in range(x_min, x_max + 1):
+				tile = tile_loader(x, y)
+				if tile is None:
+					continue
+
+				tile = np.asarray(
+					tile,
+					dtype=np.float32,
+				)
+				if tile.shape != (tile_size, tile_size):
+					raise RuntimeError(
+						f"Unerwartete Tile-Größe {tile.shape} "
+						f"für {grid['zoom']}/{x}/{y}"
+					)
+
+				col = (x - x_min) * tile_size
+				strip[
+					:,
+					col:col + tile_size,
+				] = tile
+
+			strip.tofile(output)
+
+
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--config", default="config/north_sea_pilot.json")
@@ -302,77 +346,62 @@ def main():
 		unresolved_missing = list(requested_missing)
 
 	elevation_path = work_dir / "elevation.f32"
-	elevation = np.memmap(
-		elevation_path,
-		dtype=np.float32,
-		mode="w+",
-		shape=(grid["height"], grid["width"]),
-	)
-	elevation[:] = np.nan
-
 	decoded_fallback_parents = {}
 	fallback_tiles = []
 	unresolved_set = set(unresolved_missing)
+	tile_paths = {
+		(x, y): path
+		for x, y, _url, path in tasks
+	}
+
+	def load_target_tile(x, y):
+		if (x, y) in unresolved_set:
+			return None
+
+		if status[(x, y)] != "missing":
+			return decode_terrarium(tile_paths[(x, y)])
+
+		fallback = fallbacks[(x, y)]
+		parent_key = (
+			fallback["parent_zoom"],
+			fallback["parent_x"],
+			fallback["parent_y"],
+		)
+		if parent_key not in decoded_fallback_parents:
+			data = pmtiles_tile_bytes(
+				fallback_reader,
+				fallback_compression,
+				*parent_key,
+			)
+			decoded_fallback_parents[parent_key] = (
+				decode_terrarium_bytes(data)
+			)
+
+		fallback_tiles.append({
+			"x": x,
+			"y": y,
+			"parent_zoom": fallback["parent_zoom"],
+			"parent_x": fallback["parent_x"],
+			"parent_y": fallback["parent_y"],
+		})
+
+		return overzoom_parent_tile(
+			decoded_fallback_parents[parent_key],
+			x,
+			y,
+			grid["zoom"],
+			fallback["parent_zoom"],
+		)
 
 	try:
-		for x, y, _url, path in tasks:
-			if (x, y) in unresolved_set:
-				continue
-
-			if status[(x, y)] == "missing":
-				fallback = fallbacks[(x, y)]
-				parent_key = (
-					fallback["parent_zoom"],
-					fallback["parent_x"],
-					fallback["parent_y"],
-				)
-				if parent_key not in decoded_fallback_parents:
-					data = pmtiles_tile_bytes(
-						fallback_reader,
-						fallback_compression,
-						*parent_key,
-					)
-					decoded_fallback_parents[parent_key] = (
-						decode_terrarium_bytes(data)
-					)
-
-				tile = overzoom_parent_tile(
-					decoded_fallback_parents[parent_key],
-					x,
-					y,
-					grid["zoom"],
-					fallback["parent_zoom"],
-				)
-				fallback_tiles.append({
-					"x": x,
-					"y": y,
-					"parent_zoom": fallback["parent_zoom"],
-					"parent_x": fallback["parent_x"],
-					"parent_y": fallback["parent_y"],
-				})
-			else:
-				tile = decode_terrarium(path)
-
-			if tile.shape != (
-				grid["tile_size"],
-				grid["tile_size"],
-			):
-				raise RuntimeError(
-					f"Unerwartete Tile-Größe {tile.shape} "
-					f"für {grid['zoom']}/{x}/{y}"
-				)
-
-			row = (y - grid["y_min"]) * grid["tile_size"]
-			col = (x - grid["x_min"]) * grid["tile_size"]
-			elevation[
-				row:row + grid["tile_size"],
-				col:col + grid["tile_size"],
-			] = tile
+		write_elevation_strips(
+			elevation_path,
+			grid,
+			load_target_tile,
+		)
 	finally:
 		if fallback_file is not None:
 			fallback_file.close()
-
-	elevation.flush()
 
 	missing_tiles = [
 		[x, y]

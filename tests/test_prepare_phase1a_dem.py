@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from prepare_phase1a_dem import (
 	overzoom_parent_tile,
 	resolve_pmtiles_fallbacks,
+	write_elevation_strips,
 )
 
 
@@ -109,9 +110,67 @@ def test_pmtiles_fallback_resolution():
 		)
 
 
+
+def test_streaming_elevation_strips():
+	import tempfile
+
+	grid = {
+		"zoom": 3,
+		"tile_size": 2,
+		"x_min": 4,
+		"x_max": 5,
+		"y_min": 6,
+		"y_max": 7,
+		"width": 4,
+		"height": 4,
+	}
+	tiles = {
+		(4, 6): np.asarray([
+			[1, 2],
+			[3, 4],
+		], dtype=np.float32),
+		(5, 6): np.asarray([
+			[5, 6],
+			[7, 8],
+		], dtype=np.float32),
+		(4, 7): np.asarray([
+			[9, 10],
+			[11, 12],
+		], dtype=np.float32),
+	}
+
+	with tempfile.TemporaryDirectory() as tmp:
+		path = Path(tmp) / "elevation.f32"
+		write_elevation_strips(
+			path,
+			grid,
+			lambda x, y: tiles.get((x, y)),
+		)
+		actual = np.fromfile(
+			path,
+			dtype=np.float32,
+		).reshape((4, 4))
+
+	expected = np.asarray([
+		[1, 2, 5, 6],
+		[3, 4, 7, 8],
+		[9, 10, np.nan, np.nan],
+		[11, 12, np.nan, np.nan],
+	], dtype=np.float32)
+
+	if not np.array_equal(
+		actual,
+		expected,
+		equal_nan=True,
+	):
+		raise AssertionError(
+			f"expected={expected.tolist()} actual={actual.tolist()}"
+		)
+
 def main():
 	test_overzoom()
 	test_pmtiles_fallback_resolution()
+	test_streaming_elevation_strips()
 	print("ok")
 
 
