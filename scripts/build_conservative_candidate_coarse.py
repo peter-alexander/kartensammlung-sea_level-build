@@ -58,92 +58,95 @@ def build_conservative_coarse(
 	coarse_height = height // factor
 	coarse_cells = coarse_width * coarse_height
 
-	elevation = np.memmap(
-		elevation_path,
-		dtype=np.float32,
-		mode="r",
-		shape=(height, width),
-	)
-	sea_mask = np.memmap(
-		sea_mask_path,
-		dtype=np.uint8,
-		mode="r",
-		shape=(height, width),
-	)
-
 	output_elevation_path = Path(output_elevation_path)
 	output_sea_mask_path = Path(output_sea_mask_path)
 	output_elevation_path.parent.mkdir(parents=True, exist_ok=True)
 	output_sea_mask_path.parent.mkdir(parents=True, exist_ok=True)
 
-	coarse_elevation = np.memmap(
-		output_elevation_path,
-		dtype=np.float32,
-		mode="w+",
-		shape=(coarse_height, coarse_width),
-	)
-	coarse_sea = np.memmap(
-		output_sea_mask_path,
-		dtype=np.uint8,
-		mode="w+",
-		shape=(coarse_height, coarse_width),
-	)
-
 	finite_coarse_cells = 0
 	sea_coarse_cells = 0
 
-	for coarse_row0 in range(0, coarse_height, chunk_coarse_rows):
-		coarse_row1 = min(
+	with (
+		open(elevation_path, "rb") as elevation_file,
+		open(sea_mask_path, "rb") as sea_file,
+		open(output_elevation_path, "wb") as coarse_elevation_file,
+		open(output_sea_mask_path, "wb") as coarse_sea_file,
+	):
+		for coarse_row0 in range(
+			0,
 			coarse_height,
-			coarse_row0 + chunk_coarse_rows,
-		)
-		fine_row0 = coarse_row0 * factor
-		fine_row1 = coarse_row1 * factor
-		coarse_rows = coarse_row1 - coarse_row0
+			chunk_coarse_rows,
+		):
+			coarse_row1 = min(
+				coarse_height,
+				coarse_row0 + chunk_coarse_rows,
+			)
+			coarse_rows = coarse_row1 - coarse_row0
+			fine_rows = coarse_rows * factor
+			fine_count = fine_rows * width
 
-		elevation_chunk = np.asarray(
-			elevation[fine_row0:fine_row1, :],
-			dtype=np.float32,
-		)
-		elevation_blocks = elevation_chunk.reshape(
-			coarse_rows,
-			factor,
-			coarse_width,
-			factor,
-		)
-		finite = np.isfinite(elevation_blocks)
-		safe = np.where(
-			finite,
-			elevation_blocks,
-			np.float32(np.inf),
-		)
-		minimum = safe.min(axis=(1, 3))
-		has_finite = finite.any(axis=(1, 3))
-		minimum[~has_finite] = np.nan
+			elevation_chunk = np.fromfile(
+				elevation_file,
+				dtype=np.float32,
+				count=fine_count,
+			)
+			if elevation_chunk.size != fine_count:
+				raise RuntimeError(
+					"Elevation konnte nicht vollständig "
+					"sequentiell gelesen werden."
+				)
 
-		sea_chunk = np.asarray(
-			sea_mask[fine_row0:fine_row1, :],
-			dtype=np.uint8,
-		)
-		sea_blocks = sea_chunk.reshape(
-			coarse_rows,
-			factor,
-			coarse_width,
-			factor,
-		)
-		sea_or = sea_blocks.max(axis=(1, 3)).astype(
-			np.uint8,
-			copy=False,
-		)
+			safe = np.nan_to_num(
+				elevation_chunk,
+				copy=True,
+				nan=np.inf,
+				posinf=np.inf,
+				neginf=np.inf,
+			)
+			safe_blocks = safe.reshape(
+				coarse_rows,
+				factor,
+				coarse_width,
+				factor,
+			)
+			minimum = safe_blocks.min(axis=(1, 3))
+			has_finite = np.isfinite(minimum)
+			minimum[~has_finite] = np.nan
 
-		coarse_elevation[coarse_row0:coarse_row1, :] = minimum
-		coarse_sea[coarse_row0:coarse_row1, :] = sea_or
+			sea_chunk = np.fromfile(
+				sea_file,
+				dtype=np.uint8,
+				count=fine_count,
+			)
+			if sea_chunk.size != fine_count:
+				raise RuntimeError(
+					"Sea-Maske konnte nicht vollständig "
+					"sequentiell gelesen werden."
+				)
 
-		finite_coarse_cells += int(np.count_nonzero(has_finite))
-		sea_coarse_cells += int(np.count_nonzero(sea_or))
+			sea_blocks = sea_chunk.reshape(
+				coarse_rows,
+				factor,
+				coarse_width,
+				factor,
+			)
+			sea_or = sea_blocks.max(axis=(1, 3)).astype(
+				np.uint8,
+				copy=False,
+			)
 
-	coarse_elevation.flush()
-	coarse_sea.flush()
+			minimum.astype(
+				np.float32,
+				copy=False,
+			).tofile(coarse_elevation_file)
+			sea_or.tofile(coarse_sea_file)
+
+			finite_coarse_cells += int(
+				np.count_nonzero(has_finite)
+			)
+			sea_coarse_cells += int(
+				np.count_nonzero(sea_or)
+			)
 
 	return {
 		"fine_width": width,
