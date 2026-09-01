@@ -1,4 +1,5 @@
 name: Temporary full adaptive component one
+# Retry after implicit adaptive domain ID fix.
 
 on:
   push:
