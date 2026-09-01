@@ -60,6 +60,22 @@ def main():
 	if with_halo != [1, 3]:
 		raise AssertionError(with_halo)
 
+	implicit_ids = []
+	for domain in domains:
+		item = dict(domain)
+		item.pop("id")
+		implicit_ids.append(item)
+
+	implicit = select_seed_domains(
+		implicit_ids,
+		sea,
+		mask_origin_x=0,
+		mask_origin_y=0,
+		halo_coarse_cells=1,
+	)
+	if implicit != [1, 3]:
+		raise AssertionError(implicit)
+
 	print("ok")
 
 
