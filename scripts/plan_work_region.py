@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 from shapely.geometry import box, mapping, shape
 from shapely.ops import transform, unary_union
 
@@ -52,8 +53,10 @@ def projected_area_m2(geometry):
 	radius = WEB_MERCATOR_WORLD / (2.0 * math.pi)
 
 	def project(lon, lat, z=None):
-		x = radius * math.radians(lon)
-		y = radius * math.asinh(math.tan(math.radians(lat)))
+		lon = np.asarray(lon, dtype=np.float64)
+		lat = np.asarray(lat, dtype=np.float64)
+		x = radius * np.radians(lon)
+		y = radius * np.arcsinh(np.tan(np.radians(lat)))
 		if z is None:
 			return x, y
 		return x, y, z
