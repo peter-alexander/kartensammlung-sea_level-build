@@ -297,6 +297,41 @@ def main():
 		if not report["all_domain_work_deleted"]:
 			raise AssertionError(report)
 
+		seeded_output = tmp / "seeded-output"
+		seeded = process_adaptive_lazy_domains(
+			domain_specs,
+			materialize,
+			seeded_output,
+			tmp / "seeded-work",
+			ROOT / "build" / "priority_flood_quantized",
+			LEVELS,
+			initial_domain_ids=[3],
+		)
+		if seeded["initial_domain_count"] != 1:
+			raise AssertionError(seeded)
+		if seeded["solver_runs"] > report["solver_runs"]:
+			raise AssertionError(
+				"Seeded Queue darf nicht mehr Solver-Runs "
+				"als der All-Domain-Start benötigen."
+			)
+		for name, shape in (
+			("r1-c0.u8", (1, 1)),
+			("r2-c1.u8", (2, 2)),
+			("r3-c0.u8", (1, 1)),
+		):
+			expected = np.fromfile(
+				output_dir / name,
+				dtype=np.uint8,
+			).reshape(shape)
+			actual = np.fromfile(
+				seeded_output / name,
+				dtype=np.uint8,
+			).reshape(shape)
+			if not np.array_equal(expected, actual):
+				raise AssertionError(
+					f"Seeded Queue weicht für {name} ab."
+				)
+
 		checkpoint_path = tmp / "adaptive-checkpoint.npz"
 		resume_output = tmp / "resume-output"
 		resume_work = tmp / "resume-work"
