@@ -38,6 +38,7 @@ jobs:
         run: |
           python tests/test_quantized_priority_flood.py
           python tests/test_candidate_mask_70.py
+          python tests/test_conservative_candidate.py
           python tests/test_threshold_pyramid.py
           python tests/test_refinement_boundary.py
           python tests/test_grid.py
