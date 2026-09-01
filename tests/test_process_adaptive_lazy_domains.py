@@ -19,6 +19,105 @@ from process_adaptive_lazy_domains import (
 LEVELS = "0,1,2,3,4,5,6"
 
 
+def test_internal_external_sea_is_ignored(tmp):
+	domains = [
+		{
+			"id": 1,
+			"zoom": 0,
+			"coarse_x0": 0,
+			"coarse_y0": 0,
+			"coarse_width": 1,
+			"coarse_height": 1,
+			"fine_pixels_per_coarse_cell": 1,
+			"fine_width": 1,
+			"fine_height": 1,
+		},
+		{
+			"id": 2,
+			"zoom": 1,
+			"coarse_x0": 1,
+			"coarse_y0": 0,
+			"coarse_width": 1,
+			"coarse_height": 1,
+			"fine_pixels_per_coarse_cell": 2,
+			"fine_width": 2,
+			"fine_height": 2,
+		},
+	]
+
+	def materialize(domain, domain_dir):
+		height = int(domain["fine_height"])
+		width = int(domain["fine_width"])
+		elevation_path = domain_dir / "elevation.f32"
+		sea_path = domain_dir / "sea.u8"
+		land_path = domain_dir / "land.u8"
+
+		np.ones(
+			(height, width),
+			dtype=np.float32,
+		).tofile(elevation_path)
+		np.zeros(
+			(height, width),
+			dtype=np.uint8,
+		).tofile(sea_path)
+		np.ones(
+			(height, width),
+			dtype=np.uint8,
+		).tofile(land_path)
+
+		external = {
+			"top": np.zeros(width, dtype=bool),
+			"bottom": np.zeros(width, dtype=bool),
+			"left": np.zeros(height, dtype=bool),
+			"right": np.zeros(height, dtype=bool),
+		}
+		if int(domain["id"]) == 1:
+			external["right"][:] = True
+		else:
+			external["left"][:] = True
+
+		return {
+			"elevation_path": str(elevation_path),
+			"sea_mask_path": str(sea_path),
+			"land_mask_path": str(land_path),
+			"external_sea": external,
+		}
+
+	report = process_adaptive_lazy_domains(
+		domains,
+		materialize,
+		tmp / "internal-output",
+		tmp / "internal-work",
+		ROOT / "build" / "priority_flood_quantized",
+		LEVELS,
+	)
+
+	sentinel = len(LEVELS.split(","))
+	for path, shape in (
+		(tmp / "internal-output/r1-c0.u8", (1, 1)),
+		(tmp / "internal-output/r2-c1.u8", (2, 2)),
+	):
+		values = np.fromfile(
+			path,
+			dtype=np.uint8,
+		).reshape(shape)
+		if np.any(values != sentinel):
+			raise AssertionError(
+				"Sea außerhalb einer internen Domainkante "
+				"darf nicht als externer Seed wirken."
+			)
+
+	if report["external_sea_improvements"] != 0:
+		raise AssertionError(report)
+	if (
+		report[
+			"internal_edge_pixels_excluded_from_external_sea"
+		]
+		!= 3
+	):
+		raise AssertionError(report)
+
+
 def main():
 	domain_specs = [
 		{
@@ -125,6 +224,7 @@ def main():
 
 	with tempfile.TemporaryDirectory() as tmp:
 		tmp = Path(tmp)
+		test_internal_external_sea_is_ignored(tmp)
 		output_dir = tmp / "output"
 		work_dir = tmp / "work"
 
