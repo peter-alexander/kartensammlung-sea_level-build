@@ -1,0 +1,212 @@
+name: Temporary North Adriatic Alps candidate benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-candidate-alps.yml
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow rasterio
+
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin unzip
+
+      - name: Build tools
+        run: |
+          mkdir -p build tmp/candidate-alps
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic             src/candidate_mask_70.cpp             -o build/candidate_mask_70
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic             src/priority_flood_quantized.cpp             -o build/priority_flood_quantized
+
+      - name: Prepare DEM
+        run: |
+          /usr/bin/time -v             python scripts/prepare_phase1a_dem.py             --config config/candidate_benchmark_north_adriatic_alps_z11.json             --cache-dir cache             --work-dir tmp/candidate-alps             --workers 12             2>&1 | tee tmp/candidate-alps/dem.log
+
+      - name: Download ocean polygons
+        run: |
+          mkdir -p cache tmp/ocean-source
+
+          curl -fL --retry 3 --retry-delay 5             -o cache/water-polygons-split-3857.zip             https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip             '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg'             -d tmp/ocean-source
+
+      - name: Rasterize ocean mask
+        run: |
+          eval "$(
+            python - tmp/candidate-alps/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          g = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          for key in ("left", "bottom", "right", "top", "width", "height"):
+              print(f"GRID_{key.upper()}={shlex.quote(str(g[key]))}")
+          PY
+          )"
+
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+          test -n "$SHP"
+
+          ogr2ogr             -f GPKG             tmp/candidate-alps/ocean_clip.gpkg             "$SHP"             -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"             -spat_srs EPSG:3857
+
+          gdal_rasterize             -burn 1             -init 0             -ot Byte             -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"             -ts "$GRID_WIDTH" "$GRID_HEIGHT"             -co COMPRESS=DEFLATE             -co TILED=YES             tmp/candidate-alps/ocean_clip.gpkg             tmp/candidate-alps/ocean_mask.tif
+
+          python scripts/write_ocean_mask_raw.py             --grid tmp/candidate-alps/grid.json             --input tmp/candidate-alps/ocean_mask.tif             --output tmp/candidate-alps/sea_mask.u8
+
+      - name: Run exact 70m candidate pass
+        run: |
+          eval "$(
+            python - tmp/candidate-alps/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          g = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"GRID_WIDTH={shlex.quote(str(g['width']))}")
+          print(f"GRID_HEIGHT={shlex.quote(str(g['height']))}")
+          PY
+          )"
+
+          /usr/bin/time -v             build/candidate_mask_70             --elevation tmp/candidate-alps/elevation.f32             --sea-mask tmp/candidate-alps/sea_mask.u8             --output tmp/candidate-alps/candidate-70.bit             --report tmp/candidate-alps/candidate-70.json             --width "$GRID_WIDTH"             --height "$GRID_HEIGHT"             --max-level 70             2>&1 | tee tmp/candidate-alps/candidate.log
+
+      - name: Run full V2 flood baseline
+        run: |
+          eval "$(
+            python - tmp/candidate-alps/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          g = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"GRID_WIDTH={shlex.quote(str(g['width']))}")
+          print(f"GRID_HEIGHT={shlex.quote(str(g['height']))}")
+          PY
+          )"
+
+          LEVELS="$(python scripts/threshold_levels.py --csv)"
+
+          /usr/bin/time -v             build/priority_flood_quantized             --elevation tmp/candidate-alps/elevation.f32             --sea-mask tmp/candidate-alps/sea_mask.u8             --output tmp/candidate-alps/threshold.u8             --width "$GRID_WIDTH"             --height "$GRID_HEIGHT"             --levels "$LEVELS"             --connectivity 4             2>&1 | tee tmp/candidate-alps/flood.log
+
+      - name: Summarize benchmark
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path("tmp/candidate-alps")
+          candidate = json.loads(
+              (root / "candidate-70.json").read_text()
+          )
+          grid = json.loads(
+              (root / "grid.json").read_text()
+          )["grid"]
+
+          def time_stats(path):
+              text = Path(path).read_text()
+              peak = re.search(
+                  r"Maximum resident set size \(kbytes\):\s*(\d+)",
+                  text,
+              )
+              elapsed = re.search(
+                  r"Elapsed \(wall clock\) time \(h:mm:ss or m:ss\):\s*([^\n]+)",
+                  text,
+              )
+              return {
+                  "peak_rss_kb": int(peak.group(1)) if peak else None,
+                  "elapsed": elapsed.group(1).strip() if elapsed else None,
+              }
+
+          candidate_land_excluded_pct = round(
+              100.0 - candidate["candidate_land_pct"],
+              6,
+          )
+          total_excluded_pct = round(
+              100.0 - candidate["candidate_pct"],
+              6,
+          )
+
+          summary = {
+              "grid": grid,
+              "candidate": candidate,
+              "candidate_land_excluded_pct": candidate_land_excluded_pct,
+              "total_excluded_pct": total_excluded_pct,
+              "timing": {
+                  "dem": time_stats(root / "dem.log"),
+                  "candidate": time_stats(root / "candidate.log"),
+                  "full_flood": time_stats(root / "flood.log"),
+              },
+          }
+
+          (root / "summary.json").write_text(
+              json.dumps(summary, indent=2) + "\n"
+          )
+
+          print(json.dumps({
+              "cells": grid["cells"],
+              "sea_cells": candidate["sea_cells"],
+              "land_cells": candidate["land_cells"],
+              "candidate_land_pct": candidate["candidate_land_pct"],
+              "candidate_land_excluded_pct": candidate_land_excluded_pct,
+              "candidate_total_pct": candidate["candidate_pct"],
+              "total_excluded_pct": total_excluded_pct,
+              "candidate_peak_rss_kb": summary["timing"]["candidate"]["peak_rss_kb"],
+              "full_flood_peak_rss_kb": summary["timing"]["full_flood"]["peak_rss_kb"],
+          }, indent=2))
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: north-adriatic-alps-candidate-benchmark
+          path: |
+            tmp/candidate-alps/grid.json
+            tmp/candidate-alps/sea_mask.report.json
+            tmp/candidate-alps/candidate-70.json
+            tmp/candidate-alps/summary.json
+            tmp/candidate-alps/dem.log
+            tmp/candidate-alps/candidate.log
+            tmp/candidate-alps/flood.log
+          retention-days: 14
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email             "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-candidate-alps.yml ]; then
+            git rm .github/workflows/tmp-candidate-alps.yml
+            git commit -m "Remove temporary Alps candidate benchmark workflow"
+            git pull --rebase
+            git push
+          fi
