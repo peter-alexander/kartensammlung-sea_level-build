@@ -2,6 +2,8 @@
 
 import argparse
 import concurrent.futures
+import gzip
+import io
 import json
 import sys
 import urllib.error
@@ -85,8 +87,8 @@ def download_task_set(tasks, workers, *, label_zoom=None):
 	return status
 
 
-def decode_terrarium(path):
-	with Image.open(path) as image:
+def decode_terrarium_bytes(data):
+	with Image.open(io.BytesIO(data)) as image:
 		rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
 
 	return (
@@ -95,6 +97,10 @@ def decode_terrarium(path):
 		+ rgb[:, :, 2] / 256.0
 		- 32768.0
 	)
+
+
+def decode_terrarium(path):
+	return decode_terrarium_bytes(Path(path).read_bytes())
 
 
 def overzoom_parent_tile(
@@ -139,12 +145,11 @@ def overzoom_parent_tile(
 	)
 
 
-def resolve_overzoom_fallbacks(
+def resolve_pmtiles_fallbacks(
 	missing_targets,
 	target_zoom,
 	fallback_min_zoom,
-	cache_dir,
-	workers,
+	reader,
 ):
 	if fallback_min_zoom is None:
 		return {}, list(missing_targets)
@@ -153,7 +158,7 @@ def resolve_overzoom_fallbacks(
 	if fallback_min_zoom < 0:
 		raise ValueError(
 			"overzoom_fallback_minzoom muss >= 0 sein."
-	)
+		)
 	if fallback_min_zoom >= target_zoom:
 		raise ValueError(
 			"overzoom_fallback_minzoom muss kleiner als Processing-Zoom sein."
@@ -178,41 +183,49 @@ def resolve_overzoom_fallbacks(
 			)
 			for target_x, target_y in unresolved
 		})
-		tasks = [
-			(
-				x,
-				y,
-				tile_url(parent_zoom, x, y),
-				tile_path(cache_dir, parent_zoom, x, y),
-			)
-			for x, y in parent_coords
-		]
-		parent_status = download_task_set(
-			tasks,
-			workers,
-			label_zoom=parent_zoom,
-		)
+		available = {
+			(parent_x, parent_y)
+			for parent_x, parent_y in parent_coords
+			if reader.get(
+				parent_zoom,
+				parent_x,
+				parent_y,
+			) is not None
+		}
 
 		for target_x, target_y in list(unresolved):
 			parent_x = target_x // factor
 			parent_y = target_y // factor
-			if parent_status[(parent_x, parent_y)] == "missing":
+			if (parent_x, parent_y) not in available:
 				continue
 
 			resolved[(target_x, target_y)] = {
 				"parent_zoom": parent_zoom,
 				"parent_x": parent_x,
 				"parent_y": parent_y,
-				"parent_path": tile_path(
-					cache_dir,
-					parent_zoom,
-					parent_x,
-					parent_y,
-				),
 			}
 			unresolved.remove((target_x, target_y))
 
 	return resolved, sorted(unresolved)
+
+
+def pmtiles_tile_bytes(reader, compression, zoom, x, y):
+	data = reader.get(zoom, x, y)
+	if data is None:
+		raise RuntimeError(
+			f"PMTiles-Fallback enthält {zoom}/{x}/{y} nicht."
+		)
+
+	name = getattr(compression, "name", str(compression))
+	if name == "NONE":
+		return data
+	if name == "GZIP":
+		return gzip.decompress(data)
+
+	raise RuntimeError(
+		"Nicht unterstützte PMTiles-Tile-Kompression "
+		f"{name!r}."
+	)
 
 
 def main():
@@ -221,6 +234,7 @@ def main():
 	parser.add_argument("--cache-dir", default="cache")
 	parser.add_argument("--work-dir", default="tmp/phase1a")
 	parser.add_argument("--workers", type=int, default=8)
+	parser.add_argument("--fallback-pmtiles")
 	args = parser.parse_args()
 
 	config = load_config(args.config)
@@ -254,13 +268,38 @@ def main():
 		"dem",
 		{},
 	).get("overzoom_fallback_minzoom")
-	fallbacks, unresolved_missing = resolve_overzoom_fallbacks(
-		requested_missing,
-		grid["zoom"],
-		fallback_min_zoom,
-		cache_dir,
-		args.workers,
-	)
+
+	fallback_file = None
+	fallback_reader = None
+	fallback_compression = None
+	fallback_path = None
+
+	if requested_missing and fallback_min_zoom is not None:
+		if not args.fallback_pmtiles:
+			raise RuntimeError(
+				"DEM-Fallback ist konfiguriert, aber "
+				"--fallback-pmtiles fehlt."
+			)
+
+		from pmtiles.reader import MmapSource, Reader
+
+		fallback_path = Path(args.fallback_pmtiles)
+		fallback_file = fallback_path.open("rb")
+		fallback_reader = Reader(MmapSource(fallback_file))
+		fallback_compression = fallback_reader.header()[
+			"tile_compression"
+		]
+		fallbacks, unresolved_missing = (
+			resolve_pmtiles_fallbacks(
+				requested_missing,
+				grid["zoom"],
+				fallback_min_zoom,
+				fallback_reader,
+			)
+		)
+	else:
+		fallbacks = {}
+		unresolved_missing = list(requested_missing)
 
 	elevation_path = work_dir / "elevation.f32"
 	elevation = np.memmap(
@@ -275,51 +314,63 @@ def main():
 	fallback_tiles = []
 	unresolved_set = set(unresolved_missing)
 
-	for x, y, _url, path in tasks:
-		if (x, y) in unresolved_set:
-			continue
+	try:
+		for x, y, _url, path in tasks:
+			if (x, y) in unresolved_set:
+				continue
 
-		if status[(x, y)] == "missing":
-			fallback = fallbacks[(x, y)]
-			parent_path = fallback["parent_path"]
-			parent_key = str(parent_path)
-			if parent_key not in decoded_fallback_parents:
-				decoded_fallback_parents[parent_key] = (
-					decode_terrarium(parent_path)
+			if status[(x, y)] == "missing":
+				fallback = fallbacks[(x, y)]
+				parent_key = (
+					fallback["parent_zoom"],
+					fallback["parent_x"],
+					fallback["parent_y"],
+				)
+				if parent_key not in decoded_fallback_parents:
+					data = pmtiles_tile_bytes(
+						fallback_reader,
+						fallback_compression,
+						*parent_key,
+					)
+					decoded_fallback_parents[parent_key] = (
+						decode_terrarium_bytes(data)
+					)
+
+				tile = overzoom_parent_tile(
+					decoded_fallback_parents[parent_key],
+					x,
+					y,
+					grid["zoom"],
+					fallback["parent_zoom"],
+				)
+				fallback_tiles.append({
+					"x": x,
+					"y": y,
+					"parent_zoom": fallback["parent_zoom"],
+					"parent_x": fallback["parent_x"],
+					"parent_y": fallback["parent_y"],
+				})
+			else:
+				tile = decode_terrarium(path)
+
+			if tile.shape != (
+				grid["tile_size"],
+				grid["tile_size"],
+			):
+				raise RuntimeError(
+					f"Unerwartete Tile-Größe {tile.shape} "
+					f"für {grid['zoom']}/{x}/{y}"
 				)
 
-			tile = overzoom_parent_tile(
-				decoded_fallback_parents[parent_key],
-				x,
-				y,
-				grid["zoom"],
-				fallback["parent_zoom"],
-			)
-			fallback_tiles.append({
-				"x": x,
-				"y": y,
-				"parent_zoom": fallback["parent_zoom"],
-				"parent_x": fallback["parent_x"],
-				"parent_y": fallback["parent_y"],
-			})
-		else:
-			tile = decode_terrarium(path)
-
-		if tile.shape != (
-			grid["tile_size"],
-			grid["tile_size"],
-		):
-			raise RuntimeError(
-				f"Unerwartete Tile-Größe {tile.shape} "
-				f"für {grid['zoom']}/{x}/{y}"
-			)
-
-		row = (y - grid["y_min"]) * grid["tile_size"]
-		col = (x - grid["x_min"]) * grid["tile_size"]
-		elevation[
-			row:row + grid["tile_size"],
-			col:col + grid["tile_size"],
-		] = tile
+			row = (y - grid["y_min"]) * grid["tile_size"]
+			col = (x - grid["x_min"]) * grid["tile_size"]
+			elevation[
+				row:row + grid["tile_size"],
+				col:col + grid["tile_size"],
+			] = tile
+	finally:
+		if fallback_file is not None:
+			fallback_file.close()
 
 	elevation.flush()
 
@@ -337,6 +388,11 @@ def main():
 				requested_missing
 			),
 			"overzoom_fallback_minzoom": fallback_min_zoom,
+			"fallback_pmtiles": (
+				str(fallback_path)
+				if fallback_path is not None
+				else None
+			),
 			"fallback_tile_count": len(fallback_tiles),
 			"fallback_tiles": fallback_tiles,
 			"missing_tile_count": len(missing_tiles),

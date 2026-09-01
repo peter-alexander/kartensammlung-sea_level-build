@@ -8,10 +8,23 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from prepare_phase1a_dem import overzoom_parent_tile
+from prepare_phase1a_dem import (
+	overzoom_parent_tile,
+	resolve_pmtiles_fallbacks,
+)
 
 
-def main():
+class FakeReader:
+	def __init__(self, available):
+		self.available = set(available)
+
+	def get(self, zoom, x, y):
+		if (zoom, x, y) in self.available:
+			return b"tile"
+		return None
+
+
+def test_overzoom():
 	parent = np.arange(
 		16,
 		dtype=np.float32,
@@ -66,21 +79,39 @@ def main():
 			"Faktor-4-Overzoom liefert den falschen Parent-Ausschnitt."
 		)
 
-	try:
-		overzoom_parent_tile(
-			parent,
-			target_x=0,
-			target_y=0,
-			target_zoom=1,
-			parent_zoom=1,
-		)
-	except ValueError:
-		pass
-	else:
+
+def test_pmtiles_fallback_resolution():
+	reader = FakeReader({
+		(12, 5, 6),
+		(11, 3, 3),
+	})
+	resolved, unresolved = resolve_pmtiles_fallbacks(
+		[
+			(10, 12),
+			(11, 12),
+			(12, 13),
+			(30, 30),
+		],
+		target_zoom=13,
+		fallback_min_zoom=11,
+		reader=reader,
+	)
+
+	if resolved[(10, 12)]["parent_zoom"] != 12:
+		raise AssertionError("Z12-Fallback wurde nicht bevorzugt.")
+	if resolved[(11, 12)]["parent_zoom"] != 12:
+		raise AssertionError("Gemeinsamer Z12-Parent fehlt.")
+	if resolved[(12, 13)]["parent_zoom"] != 11:
+		raise AssertionError("Z11-Fallback wurde nicht gefunden.")
+	if unresolved != [(30, 30)]:
 		raise AssertionError(
-			"parent_zoom >= target_zoom muss abgelehnt werden."
+			f"Unerwartete unresolved-Liste: {unresolved}"
 		)
 
+
+def main():
+	test_overzoom()
+	test_pmtiles_fallback_resolution()
 	print("ok")
 
 
