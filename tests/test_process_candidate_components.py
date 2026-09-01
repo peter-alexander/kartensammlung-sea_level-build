@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,6 +16,34 @@ def pack_mask(mask, path):
 		mask.reshape(-1).astype(np.uint8),
 		bitorder="little",
 	).tofile(path)
+
+
+def assert_matches(
+	path,
+	candidate_land,
+	global_threshold,
+	sentinel,
+):
+	result = np.fromfile(
+		path,
+		dtype=np.uint8,
+	).reshape(global_threshold.shape)
+
+	if not np.array_equal(
+		result[candidate_land],
+		global_threshold[candidate_land],
+	):
+		raise AssertionError(
+			"Serielle End-to-End-Pipeline unterscheidet "
+			"sich vom globalen Priority Flood."
+		)
+
+	if not np.all(
+		result[~candidate_land] == sentinel
+	):
+		raise AssertionError(
+			"Außerhalb Candidate-Land muss Sentinel stehen."
+		)
 
 
 def main():
@@ -45,6 +74,7 @@ def main():
 		components_path = tmp / "components.json"
 		spans_path = tmp / "components.rle"
 		serial_path = tmp / "serial.u8"
+		split_path = tmp / "split.u8"
 
 		elevation.tofile(elevation_path)
 		sea.tofile(sea_path)
@@ -82,7 +112,7 @@ def main():
 			"--height", str(elevation.shape[0]),
 		], check=True)
 
-		subprocess.run([
+		common = [
 			"python",
 			str(
 				ROOT
@@ -93,42 +123,75 @@ def main():
 			"--spans", str(spans_path),
 			"--elevation", str(elevation_path),
 			"--sea-mask", str(sea_path),
-			"--output", str(serial_path),
-			"--work-dir", str(tmp / "work"),
 			"--solver",
 			str(ROOT / "build" / "priority_flood_land_mask"),
 			"--levels", levels,
 			"--global-width", str(elevation.shape[1]),
 			"--global-height", str(elevation.shape[0]),
 			"--halo", "1",
-		], check=True)
+		]
 
-		serial = np.fromfile(
+		direct_result = subprocess.check_output([
+			*common,
+			"--output", str(serial_path),
+			"--work-dir", str(tmp / "work-direct"),
+		], text=True)
+		direct_report = json.loads(direct_result)
+
+		assert_matches(
 			serial_path,
-			dtype=np.uint8,
-		).reshape(elevation.shape)
+			candidate_land,
+			global_threshold,
+			sentinel,
+		)
 
-		if not np.array_equal(
-			serial[candidate_land],
-			global_threshold[candidate_land],
-		):
+		if direct_report["split_components"] != 0:
 			raise AssertionError(
-				"Serielle End-to-End-Pipeline unterscheidet "
-				"sich vom globalen Priority Flood."
+				"Direkter Test darf keinen Domain-Fallback nutzen."
 			)
 
-		if not np.all(
-			serial[~candidate_land] == sentinel
-		):
+		split_result = subprocess.check_output([
+			*common,
+			"--output", str(split_path),
+			"--work-dir", str(tmp / "work-split"),
+			"--max-direct-window-cells", "1",
+			"--domain-solver",
+			str(ROOT / "build" / "priority_flood_quantized"),
+			"--domain-width", "2",
+			"--domain-height", "2",
+		], text=True)
+		split_report = json.loads(split_result)
+
+		assert_matches(
+			split_path,
+			candidate_land,
+			global_threshold,
+			sentinel,
+		)
+
+		if split_report["direct_components"] != 0:
 			raise AssertionError(
-				"Außerhalb Candidate-Land muss Sentinel stehen."
+				"Erzwungener Fallback hat eine Component direkt gerechnet."
+			)
+		if split_report["split_components"] != 2:
+			raise AssertionError(
+				"Erwartet wurden zwei gesplittete Components."
+			)
+		if split_report["split_solver_runs"] <= 0:
+			raise AssertionError(
+				"Domain-Fallback hat keinen Solver-Lauf gemeldet."
 			)
 
-		work_dir = tmp / "work"
-		if work_dir.exists() and any(work_dir.iterdir()):
-			raise AssertionError(
-				"Component-Arbeitsverzeichnisse wurden nicht freigegeben."
-			)
+		for work_name in ("work-direct", "work-split"):
+			work_dir = tmp / work_name
+			if (
+				work_dir.exists()
+				and any(work_dir.iterdir())
+			):
+				raise AssertionError(
+					"Component-Arbeitsverzeichnisse wurden "
+					"nicht freigegeben."
+				)
 
 	print("ok")
 
