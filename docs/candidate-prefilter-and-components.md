@@ -721,6 +721,38 @@ blind auf Component 1 hochgerechnet werden: der Vollplan besteht überwiegend
 aus kleineren Z13-/Z14-Domains. Er zeigt aber, dass das RAM-Ziel auch mit
 realer Multi-Resolution-Konvergenz stabil bleibt.
 
+## Sea-seeded Initial-Queue
+
+Der adaptive Solver muss nicht jede geplante Domain prophylaktisch einmal
+rechnen. `scripts/plan_adaptive_sea_seeds.py` rasterisiert deshalb die
+Open-Sea-Geometrie konservativ auf dem Faktor-16-Gitter und startet nur Domains
+mit Sea-Kontakt bzw. einem zusätzlichen Grobzellen-Halo. Alle anderen Domains
+werden erst aktiviert, wenn ein Nachbar einen besseren Randthreshold liefert.
+
+Auf demselben realen 128-Domain-Sample wie im vorherigen Benchmark:
+
+- All-Domain-Start: 128 Initial-Domains, 416 Solver-Läufe, 37,52 s,
+- Sea-Seed-Start: **71 Initial-Domains**, 394 Solver-Läufe, **36,49 s**,
+- Seed-Anteil: 55,47 %,
+- davon 39 Z11- und 32 Z16-Domains,
+- Peak-RSS praktisch unverändert: 183.760 KiB,
+- Randverbesserungen: 265.578.
+
+Die Optimierung spart in diesem küstennahen Sample rund 5,3 % Solver-Läufe.
+Sie ist daher kein fundamentaler Skalierungssprung, vermeidet aber unnötige
+erste Materialisierungen und ist im Produktionspfad sinnvoll.
+
+Damit ein konservativer Seed-Plan niemals still ein falsches Ergebnis erzeugen
+kann, prüft die finale Materialisierung zusätzlich:
+
+- erhält eine Domain erst bei der Finalisierung einen neuen External-Sea-Seed,
+  wird der Lauf abgebrochen;
+- enthält eine bis dahin nie aktivierte Domain echte Sea-Zellen, wird der Lauf
+  ebenfalls abgebrochen.
+
+Ein gezielter Negativtest mit absichtlich übersehenem Sea-Seed bestätigt diese
+Fail-Closed-Eigenschaft.
+
 ## Checkpoint und Resume
 
 Der adaptive Solver kann seinen Konvergenzzustand inzwischen atomar
