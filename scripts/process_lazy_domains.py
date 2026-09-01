@@ -138,6 +138,31 @@ def scatter_domain(
 			output.write(values.tobytes())
 
 
+def write_sparse_domain(
+	output_dir,
+	result,
+	land,
+	domain,
+	sentinel,
+):
+	output_dir = Path(output_dir)
+	output_dir.mkdir(parents=True, exist_ok=True)
+
+	values = np.full(
+		(domain["height"], domain["width"]),
+		sentinel,
+		dtype=np.uint8,
+	)
+	values[land] = result[land]
+
+	path = (
+		output_dir
+		/ f"r{domain['grid_row']}-c{domain['grid_col']}.u8"
+	)
+	values.tofile(path)
+	return path
+
+
 def regular_domains(width, height, domain_width, domain_height):
 	width = int(width)
 	height = int(height)
@@ -176,6 +201,7 @@ def process_lazy_domains(
 	global_width,
 	global_height,
 	max_solver_runs=100000,
+	domain_output_dir=None,
 ):
 	global_width = int(global_width)
 	global_height = int(global_height)
@@ -260,11 +286,26 @@ def process_lazy_domains(
 			"land_cells": None,
 		}
 
-	initialize_output(
-		output_path,
-		global_width * global_height,
-		sentinel,
-	)
+	if output_path is None and domain_output_dir is None:
+		raise ValueError(
+			"output_path oder domain_output_dir ist erforderlich."
+		)
+	if output_path is not None:
+		initialize_output(
+			output_path,
+			global_width * global_height,
+			sentinel,
+		)
+	if domain_output_dir is not None:
+		domain_output_dir = Path(domain_output_dir)
+		shutil.rmtree(
+			domain_output_dir,
+			ignore_errors=True,
+		)
+		domain_output_dir.mkdir(
+			parents=True,
+			exist_ok=True,
+		)
 
 	queue = deque(domains.keys())
 	queued = set(domains.keys())
@@ -413,14 +454,23 @@ def process_lazy_domains(
 				)
 
 			domain["runs"] += 1
-			scatter_domain(
-				output_path,
-				result,
-				land,
-				domain,
-				sentinel,
-				global_width,
-			)
+			if output_path is not None:
+				scatter_domain(
+					output_path,
+					result,
+					land,
+					domain,
+					sentinel,
+					global_width,
+				)
+			if domain_output_dir is not None:
+				write_sparse_domain(
+					domain_output_dir,
+					result,
+					land,
+					domain,
+					sentinel,
+				)
 
 			grid_row, grid_col = key
 			neighbors = [
@@ -496,6 +546,21 @@ def process_lazy_domains(
 		),
 		"peak_materialized_cells": peak_materialized_cells,
 		"sentinel_class": sentinel,
+		"output_mode": (
+			"global-and-sparse"
+			if output_path is not None
+				and domain_output_dir is not None
+			else (
+				"global"
+				if output_path is not None
+				else "sparse-domains"
+			)
+		),
+		"domain_output_dir": (
+			str(domain_output_dir)
+			if domain_output_dir is not None
+			else None
+		),
 		"all_domain_work_deleted": (
 			not any(work_dir.iterdir())
 		),
