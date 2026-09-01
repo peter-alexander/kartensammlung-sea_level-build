@@ -77,6 +77,14 @@ def main():
 			raise AssertionError(report)
 		if report["packed_mask_bytes"] != 3:
 			raise AssertionError(report)
+		if report["sea_cells"] != 4:
+			raise AssertionError(report)
+		if report["land_cells"] != 20:
+			raise AssertionError(report)
+		if report["candidate_land_cells"] != 4:
+			raise AssertionError(report)
+		if abs(report["candidate_land_pct"] - 20.0) > 1e-9:
+			raise AssertionError(report)
 
 	print("ok")
 

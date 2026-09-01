@@ -168,6 +168,7 @@ static void writeReport(
 	std::uint64_t cellCount,
 	std::uint64_t elevationEligibleCount,
 	std::uint64_t candidateCount,
+	std::uint64_t seaCellCount,
 	std::size_t packedBytes,
 	std::size_t maxQueuedSpans
 ) {
@@ -183,6 +184,17 @@ static void writeReport(
 		: static_cast<double>(candidateCount)
 			* 100.0
 			/ static_cast<double>(cellCount);
+	const std::uint64_t landCellCount = cellCount - seaCellCount;
+	const std::uint64_t candidateLandCount = (
+		candidateCount >= seaCellCount
+			? candidateCount - seaCellCount
+			: 0
+	);
+	const double candidateLandPct = landCellCount == 0
+		? 0.0
+		: static_cast<double>(candidateLandCount)
+			* 100.0
+			/ static_cast<double>(landCellCount);
 
 	output
 		<< "{\n"
@@ -194,6 +206,10 @@ static void writeReport(
 		<< elevationEligibleCount << ",\n"
 		<< "\t\"candidate_cells\": " << candidateCount << ",\n"
 		<< "\t\"candidate_pct\": " << candidatePct << ",\n"
+		<< "\t\"sea_cells\": " << seaCellCount << ",\n"
+		<< "\t\"land_cells\": " << landCellCount << ",\n"
+		<< "\t\"candidate_land_cells\": " << candidateLandCount << ",\n"
+		<< "\t\"candidate_land_pct\": " << candidateLandPct << ",\n"
 		<< "\t\"packed_mask_bytes\": " << packedBytes << ",\n"
 		<< "\t\"max_queued_spans\": " << maxQueuedSpans << "\n"
 		<< "}\n";
@@ -202,7 +218,8 @@ static void writeReport(
 static void buildEligibility(
 	const Options& options,
 	PackedBits& eligible,
-	std::uint64_t& eligibleCount
+	std::uint64_t& eligibleCount,
+	std::uint64_t& seaCellCount
 ) {
 	const std::size_t cellCount =
 		static_cast<std::size_t>(options.width) * options.height;
@@ -239,8 +256,13 @@ static void buildEligibility(
 
 		for (std::size_t local = 0; local < count; ++local) {
 			const float value = elevationChunk[local];
+			const bool isSea = seaChunk[local] != 0;
+			if (isSea) {
+				++seaCellCount;
+			}
+
 			const bool isEligible =
-				seaChunk[local] != 0
+				isSea
 				|| (
 					std::isfinite(value)
 					&& static_cast<double>(value) <= options.maxLevel
@@ -439,7 +461,13 @@ int main(int argc, char** argv) {
 		PackedBits candidate(static_cast<std::size_t>(cellCount));
 
 		std::uint64_t eligibleCount = 0;
-		buildEligibility(options, eligible, eligibleCount);
+		std::uint64_t seaCellCount = 0;
+		buildEligibility(
+			options,
+			eligible,
+			eligibleCount,
+			seaCellCount
+		);
 
 		std::size_t maxQueuedSpans = 0;
 		const std::uint64_t candidateCount = floodCandidates(
@@ -455,6 +483,7 @@ int main(int argc, char** argv) {
 			cellCount,
 			eligibleCount,
 			candidateCount,
+			seaCellCount,
 			candidate.bytes(),
 			maxQueuedSpans
 		);
@@ -463,6 +492,9 @@ int main(int argc, char** argv) {
 			<< "cells=" << cellCount
 			<< " eligible=" << eligibleCount
 			<< " candidates=" << candidateCount
+			<< " sea_cells=" << seaCellCount
+			<< " candidate_land_cells="
+			<< (candidateCount - seaCellCount)
 			<< " candidate_pct="
 			<< (
 				cellCount == 0
