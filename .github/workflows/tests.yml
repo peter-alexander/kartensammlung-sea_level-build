@@ -41,3 +41,4 @@ jobs:
           python tests/test_prepare_refinement_region.py
           python tests/test_composite_threshold.py
           python tests/test_write_ocean_mask_raw.py
+          python tests/test_compare_refinement_seam.py
