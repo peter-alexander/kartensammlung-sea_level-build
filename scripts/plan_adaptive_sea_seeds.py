@@ -32,7 +32,7 @@ def select_seed_domains(
 	height, width = sea_mask.shape
 	selected = []
 
-	for domain in domains:
+	for index, domain in enumerate(domains, start=1):
 		x0 = (
 			int(domain["coarse_x0"])
 			- int(mask_origin_x)
@@ -56,7 +56,9 @@ def select_seed_domains(
 				sea_mask[sy0:sy1, sx0:sx1] != 0
 			)
 		):
-			selected.append(int(domain["id"]))
+			selected.append(
+				int(domain.get("id", index))
+			)
 
 	return selected
 
@@ -187,15 +189,26 @@ def plan_seed_domains(
 	coarse_factor,
 	halo_coarse_cells=1,
 ):
+	domains = [
+		{
+			**domain,
+			"id": int(domain.get("id", index)),
+		}
+		for index, domain in enumerate(
+			adaptive_plan["domains"],
+			start=1,
+		)
+	]
+
 	raster = rasterize_coarse_sea(
-		adaptive_plan["domains"],
+		domains,
 		parent_grid,
 		sea_vector_path,
 		coarse_factor=coarse_factor,
 		halo_coarse_cells=halo_coarse_cells,
 	)
 	ids = select_seed_domains(
-		adaptive_plan["domains"],
+		domains,
 		raster["sea_mask"],
 		mask_origin_x=raster["origin_x"],
 		mask_origin_y=raster["origin_y"],
@@ -204,7 +217,7 @@ def plan_seed_domains(
 
 	by_id = {
 		int(domain["id"]): domain
-		for domain in adaptive_plan["domains"]
+		for domain in domains
 	}
 	zoom_counts = Counter(
 		int(by_id[domain_id]["zoom"])
