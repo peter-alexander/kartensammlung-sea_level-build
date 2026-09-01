@@ -332,6 +332,29 @@ def main():
 					f"Seeded Queue weicht für {name} ab."
 				)
 
+		missed_seed_raised = False
+		try:
+			process_adaptive_lazy_domains(
+				domain_specs,
+				materialize,
+				tmp / "missed-seed-output",
+				tmp / "missed-seed-work",
+				ROOT / "build" / "priority_flood_quantized",
+				LEVELS,
+				initial_domain_ids=[1],
+				write_outputs_during_convergence=False,
+			)
+		except RuntimeError as error:
+			if "Seed-Plan unvollständig" not in str(error):
+				raise
+			missed_seed_raised = True
+
+		if not missed_seed_raised:
+			raise AssertionError(
+				"Finalisierung muss einen übersehenen "
+				"Sea-Seed ablehnen."
+			)
+
 		checkpoint_path = tmp / "adaptive-checkpoint.npz"
 		resume_output = tmp / "resume-output"
 		resume_work = tmp / "resume-work"
