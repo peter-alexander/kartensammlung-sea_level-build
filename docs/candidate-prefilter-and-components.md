@@ -336,18 +336,111 @@ Für die Produktionspipeline muss deshalb die **echte Coverage-Geometrie**
 geschnitten bzw. auf vollständige Abdeckung geprüft werden. Bounding Boxes
 dürfen nur zur schnellen Vorauswahl verwendet werden.
 
+## Work-Region-Planer und gemischte Source-Fidelity
+
+Der Pilot wurde inzwischen zu wiederverwendbaren Bausteinen verallgemeinert.
+
+`scripts/plan_work_region.py` schneidet eine Work Region mit den **echten**
+Mapterhorn-Coverage-Geometrien. Für Diagnose und Auflösungsentscheidung wird
+daraus eine überschneidungsfreie Best-Source-Partition erzeugt.
+
+Wichtig ist dabei:
+
+> Source-Grenzen sind **keine Solver-Grenzen**.
+
+Die gesamte Work Region bleibt eine uniforme Processing-Domain. Der höchste
+benötigte Source-Fidelity-Zoom innerhalb der tatsächlichen Work-Region-
+Geometrie bestimmt das gemeinsame Raster. Wo Mapterhorn auf diesem Zoom keine
+Tile liefert, kann `scripts/prepare_phase1a_dem.py` automatisch auf die
+nächstfeinere verfügbare Parent-Tile zurückfallen und sie auf das gemeinsame
+Raster overzoomen.
+
+Der HTTP-Fallback wird über
+
+`overzoom_fallback_mode = "http"`
+
+und `overzoom_fallback_minzoom` gesteuert.
+
+### Gemischter Realtest `si` + `tinitaly`
+
+Eine kleine reale Work Region an der Coverage-Grenze enthielt effektiv:
+
+- **48,108602 %** `si`,
+  native Auflösung 1 m, Source-Fidelity Z16,
+- **51,891398 %** `tinitaly`,
+  native Auflösung 10 m, Source-Fidelity Z13.
+
+Der Planer wählte für die gemeinsame Work Region korrekt **Z16**.
+
+Pilot-Raster:
+
+- 1.024 x 512 Zellen,
+- 524.288 Zellen,
+- ungefähr 0,834 m Ground Resolution,
+- 2 Z16-Tiles.
+
+Beide Z16-Tiles wurden vom aktuellen Mapterhorn-ZXY-Endpunkt direkt geliefert,
+obwohl ein Teil der Coverage nur `tinitaly` als beste Source ausweist. Das
+zeigt, dass Coverage-Source-Fidelity und technisch verfügbare ZXY-Maxzoom-Tiles
+nicht identisch behandelt werden dürfen: vorhandene feinere Tiles können
+verwendet werden; die Coverage-Metadaten bleiben die fachliche Aussage über die
+native Datenauflösung.
+
+### Echter HTTP-Fallback
+
+Der Fallback wurde zusätzlich an der bereits bekannten Niederlande-Z15-Probe
+geprüft:
+
+- angefordert: 1 Z15-Tile,
+- direkter Z15-Request: 404,
+- gefundener Parent: Z14,
+- aufgelöste Fallback-Tiles: 1,
+- verbleibende fehlende Tiles: **0**.
+
+Damit ist auch der reale Pfad
+
+`fehlende High-Zoom-Tile -> nächster verfügbarer Parent -> Overzoom auf gemeinsames Raster`
+
+validiert.
+
+## Grobe Component direkt als Work Region
+
+`scripts/prepare_candidate_work_region.py` rekonstruiert aus dem
+RLE-Span-Export einer groben Candidate-Land-Komponente ihre tatsächliche
+geografische Geometrie.
+
+Dabei wird bewusst **nicht nur die Component-Bounding-Box** verwendet. Eine
+hochaufgelöste Source, die lediglich in einer leeren Ecke der Bounding Box
+liegt, darf sonst nicht die komplette Work Region unnötig auf einen höheren
+Processing-Zoom ziehen.
+
+Der Konverter verwendet:
+
+- `components.json`,
+- `components.rle`,
+- das Parent-Grid,
+- den Grobfaktor,
+- optional einen groben Halo.
+
+Seine Ausgabe kann direkt als `--work-geojson` an
+`scripts/plan_work_region.py` übergeben werden.
+
+Der reguläre Pfad ist damit:
+
+1. grober konservativer Candidate,
+2. grobe Candidate-Land-Komponenten,
+3. eine RLE-Component -> geografische Work Region,
+4. echte Mapterhorn-Coverage auf dieser Geometrie auswerten,
+5. einen uniformen Source-Fidelity-Zoom für die Work Region wählen,
+6. gemeinsames DEM mit HTTP-Parent-Fallback materialisieren,
+7. exakten Highres-Candidate bilden,
+8. exakte Candidate-Land-Komponenten bestimmen,
+9. kleine Components direkt seriell rechnen,
+10. große Components automatisch per Domain-Fallback rechnen,
+11. Thresholds in die Gesamtausgabe schreiben und Work-Region-Daten freigeben.
+
 ## Nächster Prüfpunkt
 
-Der nächste Schritt ist die Generalisierung vom Pilot auf einen regulären
-Work-Region-Prozessor:
-
-1. grobe Candidate-Work-Region auswählen,
-2. tatsächliche Mapterhorn-Coverage-Geometrien schneiden,
-3. Region bei mehreren Sources in source-homogene Teilregionen zerlegen,
-4. pro Teilregion den echten Source-Fidelity-Zoom verwenden,
-5. Highres-Candidate und Components bilden,
-6. kleine Components direkt, große per Domain-Fallback rechnen,
-7. Thresholds anschließend wieder nahtlos in das Gesamtergebnis einsetzen.
-
-Damit wird die Source-Auflösung nicht nur in einem Testausschnitt, sondern
-systematisch über unterschiedliche Mapterhorn-Sources hinweg genutzt.
+Als Nächstes wird diese Kette an einer **realen groben RLE-Work-Region**
+durchgehend ausgeführt. Danach fehlt nur noch die Orchestrierung über alle
+groben Work Regions nacheinander.
