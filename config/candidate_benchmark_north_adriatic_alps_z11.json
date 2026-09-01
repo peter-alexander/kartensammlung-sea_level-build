@@ -1,0 +1,31 @@
+{
+	"name": "candidate-benchmark-north-adriatic-alps-z11",
+	"bounds": {
+		"west": 10.5,
+		"south": 44.0,
+		"east": 16.0,
+		"north": 48.5
+	},
+	"dem": {
+		"provider": "mapterhorn",
+		"tile_endpoint": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+		"processing_zoom": 11,
+		"tile_size": 512,
+		"encoding": "terrarium"
+	},
+	"sea_mask": {
+		"provider": "osmdata.openstreetmap.de",
+		"url": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+		"crs": "EPSG:3857"
+	},
+	"threshold": {
+		"scheme": "piecewise-v2",
+		"min_m": 0,
+		"max_m": 70,
+		"class_count": 58,
+		"connectivity": 4,
+		"sentinel_class": 58,
+		"sentinel_m": 71,
+		"rounding": "ceil-to-next-level"
+	}
+}
