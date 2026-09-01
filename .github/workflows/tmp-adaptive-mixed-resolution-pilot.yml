@@ -1,0 +1,784 @@
+name: Temporary adaptive mixed resolution pilot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-adaptive-mixed-resolution-pilot.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build solver
+        run: |
+          mkdir -p build tmp/adaptive-mixed cache tmp/ocean-source
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
+            -o build/priority_flood_quantized
+
+      - name: Download safe coarse work regions
+        uses: actions/download-artifact@v4
+        with:
+          name: safe-coarse-work-regions-factor16
+          path: tmp/adaptive-mixed/coarse
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33542989761
+
+      - name: Download adaptive component one plan
+        uses: actions/download-artifact@v4
+        with:
+          name: adaptive-component-one-plan
+          path: tmp/adaptive-mixed/full-plan
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33546168321
+
+      - name: Download ocean polygons
+        run: |
+          set -euo pipefail
+
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+            -d tmp/ocean-source
+
+      - name: Select real mixed resolution coastal pair
+        run: |
+          set -euo pipefail
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          python - "$SHP" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          import numpy as np
+
+          sys.path.insert(0, "scripts")
+
+          from materialize_adaptive_mapterhorn_domain import (
+              AdaptiveMapterhornDomainMaterializer,
+          )
+          from process_adaptive_lazy_domains import (
+              build_adjacencies,
+          )
+
+          root = Path("tmp/adaptive-mixed")
+          plan = json.loads(
+              (
+                  root
+                  / "full-plan/adaptive-component-1.json"
+              ).read_text()
+          )
+          parent = json.loads(
+              (root / "coarse/parent/grid.json").read_text()
+          )["grid"]
+
+          domains = {}
+          for index, raw in enumerate(
+              plan["domains"],
+              start=1,
+          ):
+              domain = dict(raw)
+              domain["id"] = index
+              domain["width"] = int(
+                  domain["fine_width"]
+              )
+              domain["height"] = int(
+                  domain["fine_height"]
+              )
+              domains[index] = domain
+
+          adjacencies, _ = build_adjacencies(domains)
+
+          materializer = AdaptiveMapterhornDomainMaterializer(
+              parent_grid=parent,
+              sea_vector_path=Path(sys.argv[1]),
+              cache_dir="cache",
+              workers=1,
+              fallback_min_zoom=int(plan["base_zoom"]),
+          )
+
+          priority = {
+              frozenset((11, 16)): 0,
+              frozenset((13, 16)): 1,
+              frozenset((14, 16)): 2,
+          }
+          candidates = []
+
+          for adjacency in adjacencies:
+              a = domains[adjacency["a"]]
+              b = domains[adjacency["b"]]
+              zooms = frozenset((
+                  int(a["zoom"]),
+                  int(b["zoom"]),
+              ))
+              if zooms not in priority:
+                  continue
+
+              if not all(
+                  int(domain["coarse_width"]) == 1
+                  and int(domain["coarse_height"]) == 1
+                  for domain in (a, b)
+              ):
+                  continue
+
+              def sea_stats(domain):
+                  grid = materializer._domain_grid(domain)
+                  halo = materializer._rasterize_sea_halo(
+                      grid
+                  )
+                  inside = int(
+                      np.count_nonzero(
+                          halo[1:-1, 1:-1]
+                      )
+                  )
+                  outside = int(
+                      np.count_nonzero(halo[0, 1:-1])
+                      + np.count_nonzero(
+                          halo[-1, 1:-1]
+                      )
+                      + np.count_nonzero(
+                          halo[1:-1, 0]
+                      )
+                      + np.count_nonzero(
+                          halo[1:-1, -1]
+                      )
+                  )
+                  return {
+                      "inside": inside,
+                      "outside": outside,
+                  }
+
+              stats_a = sea_stats(a)
+              stats_b = sea_stats(b)
+              sea_total = (
+                  stats_a["inside"]
+                  + stats_a["outside"]
+                  + stats_b["inside"]
+                  + stats_b["outside"]
+              )
+              if sea_total <= 0:
+                  continue
+
+              candidates.append((
+                  priority[zooms],
+                  -sea_total,
+                  min(a["id"], b["id"]),
+                  adjacency,
+                  a,
+                  b,
+                  stats_a,
+                  stats_b,
+              ))
+
+          materializer.close()
+
+          if not candidates:
+              raise RuntimeError(
+                  "Kein echter gemischter 1x1-Domainübergang "
+                  "mit Sea-Kontakt gefunden."
+              )
+
+          candidates.sort(
+              key=lambda item: item[:3]
+          )
+          (
+              _priority,
+              _sea_sort,
+              _id_sort,
+              adjacency,
+              a,
+              b,
+              stats_a,
+              stats_b,
+          ) = candidates[0]
+
+          # Seedärmere Domain zuerst, damit spätere
+          # Randverbesserung einen Re-Run erzwingen kann.
+          ordered = sorted(
+              (
+                  (a, stats_a),
+                  (b, stats_b),
+              ),
+              key=lambda item: (
+                  item[1]["inside"]
+                  + item[1]["outside"],
+                  int(item[0]["zoom"]),
+              ),
+          )
+
+          selected_domains = []
+          selected_stats = []
+          for new_id, (domain, stats) in enumerate(
+              ordered,
+              start=1,
+          ):
+              item = {
+                  key: value
+                  for key, value in domain.items()
+                  if key not in ("width", "height")
+              }
+              item["id"] = new_id
+              selected_domains.append(item)
+              selected_stats.append({
+                  "id": new_id,
+                  "zoom": int(item["zoom"]),
+                  **stats,
+              })
+
+          mini = {
+              key: value
+              for key, value in plan.items()
+              if key != "domains"
+          }
+          mini["domains"] = selected_domains
+          mini["domain_count"] = len(selected_domains)
+          mini["test_selection"] = {
+              "original_adjacency": adjacency,
+              "sea_stats": selected_stats,
+          }
+
+          (root / "mini-plan.json").write_text(
+              json.dumps(mini, indent=2) + "\n"
+          )
+          (root / "selection.json").write_text(
+              json.dumps({
+                  "domains": selected_domains,
+                  "sea_stats": selected_stats,
+                  "zooms": sorted(
+                      int(item["zoom"])
+                      for item in selected_domains
+                  ),
+              }, indent=2) + "\n"
+          )
+
+          print(
+              (root / "selection.json").read_text()
+          )
+
+          if len({
+              int(item["zoom"])
+              for item in selected_domains
+          }) != 2:
+              raise RuntimeError(
+                  "Pilot benötigt zwei Auflösungsstufen."
+              )
+          PY
+
+      - name: Run adaptive mixed resolution solver
+        run: |
+          set -euo pipefail
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          /usr/bin/time -v \
+            python scripts/process_adaptive_mapterhorn_work_region.py \
+              --components-report tmp/adaptive-mixed/coarse/factor-16/components.json \
+              --spans tmp/adaptive-mixed/coarse/factor-16/components.rle \
+              --parent-grid tmp/adaptive-mixed/coarse/parent/grid.json \
+              --component-id 1 \
+              --coarse-factor 16 \
+              --sea-vector "$SHP" \
+              --cache-dir cache \
+              --work-dir tmp/adaptive-mixed/work \
+              --output-dir tmp/adaptive-mixed/output \
+              --solver build/priority_flood_quantized \
+              --levels "$(python scripts/threshold_levels.py --csv)" \
+              --workers 8 \
+              --adaptive-plan tmp/adaptive-mixed/mini-plan.json \
+            2>&1 | tee tmp/adaptive-mixed/adaptive.log
+
+      - name: Build independent expanded reference graph
+        run: |
+          set -euo pipefail
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          python - "$SHP" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          import numpy as np
+
+          sys.path.insert(0, "scripts")
+
+          from materialize_adaptive_mapterhorn_domain import (
+              AdaptiveMapterhornDomainMaterializer,
+          )
+
+          root = Path("tmp/adaptive-mixed")
+          plan = json.loads(
+              (root / "mini-plan.json").read_text()
+          )
+          parent = json.loads(
+              (root / "coarse/parent/grid.json").read_text()
+          )["grid"]
+          domains = plan["domains"]
+
+          materializer = AdaptiveMapterhornDomainMaterializer(
+              parent_grid=parent,
+              sea_vector_path=Path(sys.argv[1]),
+              cache_dir="cache",
+              workers=4,
+              fallback_min_zoom=int(plan["base_zoom"]),
+          )
+
+          max_scale = max(
+              int(domain["fine_pixels_per_coarse_cell"])
+              for domain in domains
+          )
+          min_x = min(
+              int(domain["coarse_x0"])
+              for domain in domains
+          )
+          min_y = min(
+              int(domain["coarse_y0"])
+              for domain in domains
+          )
+          max_x = max(
+              int(domain["coarse_x0"])
+              + int(domain["coarse_width"])
+              for domain in domains
+          )
+          max_y = max(
+              int(domain["coarse_y0"])
+              + int(domain["coarse_height"])
+              for domain in domains
+          )
+
+          width = (max_x - min_x) * max_scale
+          height = (max_y - min_y) * max_scale
+          elevation = np.full(
+              (height, width),
+              np.nan,
+              dtype=np.float32,
+          )
+          sea = np.zeros(
+              (height, width),
+              dtype=np.uint8,
+          )
+
+          sentinel = len(
+              __import__("subprocess")
+              .check_output(
+                  [
+                      "python",
+                      "scripts/threshold_levels.py",
+                      "--csv",
+                  ],
+                  text=True,
+              )
+              .strip()
+              .split(",")
+          )
+          boundary = np.full(
+              (height, width),
+              sentinel,
+              dtype=np.uint8,
+          )
+
+          qa = root / "qa-domains"
+          qa.mkdir(parents=True, exist_ok=True)
+
+          domain_meta = []
+          for domain in domains:
+              domain_dir = qa / f"domain-{domain['id']}"
+              domain_dir.mkdir(
+                  parents=True,
+                  exist_ok=True,
+              )
+              meta = materializer(
+                  domain,
+                  domain_dir,
+              )
+
+              local_height = int(domain["fine_height"])
+              local_width = int(domain["fine_width"])
+              local_scale = int(
+                  domain["fine_pixels_per_coarse_cell"]
+              )
+              ratio = max_scale // local_scale
+
+              local_elevation = np.fromfile(
+                  meta["elevation_path"],
+                  dtype=np.float32,
+              ).reshape(
+                  (local_height, local_width)
+              )
+              local_sea = np.fromfile(
+                  meta["sea_mask_path"],
+                  dtype=np.uint8,
+              ).reshape(
+                  (local_height, local_width)
+              )
+
+              expanded_elevation = np.repeat(
+                  np.repeat(
+                      local_elevation,
+                      ratio,
+                      axis=0,
+                  ),
+                  ratio,
+                  axis=1,
+              )
+              expanded_sea = np.repeat(
+                  np.repeat(
+                      local_sea,
+                      ratio,
+                      axis=0,
+                  ),
+                  ratio,
+                  axis=1,
+              )
+
+              x0 = (
+                  int(domain["coarse_x0"]) - min_x
+              ) * max_scale
+              y0 = (
+                  int(domain["coarse_y0"]) - min_y
+              ) * max_scale
+              x1 = x0 + expanded_elevation.shape[1]
+              y1 = y0 + expanded_elevation.shape[0]
+
+              if np.any(np.isfinite(
+                  elevation[y0:y1, x0:x1]
+              )):
+                  raise RuntimeError(
+                      "Adaptive QA-Domains überlappen."
+                  )
+
+              elevation[y0:y1, x0:x1] = (
+                  expanded_elevation
+              )
+              sea[y0:y1, x0:x1] = expanded_sea
+
+              external = meta["external_sea"]
+
+              def expanded_side(side):
+                  return np.repeat(
+                      np.asarray(
+                          external[side],
+                          dtype=bool,
+                      ),
+                      ratio,
+                  )
+
+              domain_x0 = int(domain["coarse_x0"])
+              domain_y0 = int(domain["coarse_y0"])
+              domain_x1 = (
+                  domain_x0
+                  + int(domain["coarse_width"])
+              )
+              domain_y1 = (
+                  domain_y0
+                  + int(domain["coarse_height"])
+              )
+
+              if domain_y0 == min_y:
+                  values = expanded_side("top")
+                  target = boundary[
+                      0,
+                      x0:x1,
+                  ]
+                  target[values] = 0
+              if domain_y1 == max_y:
+                  values = expanded_side("bottom")
+                  target = boundary[
+                      -1,
+                      x0:x1,
+                  ]
+                  target[values] = 0
+              if domain_x0 == min_x:
+                  values = expanded_side("left")
+                  target = boundary[
+                      y0:y1,
+                      0,
+                  ]
+                  target[values] = 0
+              if domain_x1 == max_x:
+                  values = expanded_side("right")
+                  target = boundary[
+                      y0:y1,
+                      -1,
+                  ]
+                  target[values] = 0
+
+              domain_meta.append({
+                  "id": int(domain["id"]),
+                  "zoom": int(domain["zoom"]),
+                  "ratio_to_reference": ratio,
+                  "x0": x0,
+                  "y0": y0,
+                  "x1": x1,
+                  "y1": y1,
+              })
+
+          materializer.close()
+
+          if np.any(~np.isfinite(elevation)):
+              raise RuntimeError(
+                  "Ausgewähltes Domainpaar bildet kein "
+                  "vollständig rechteckiges Referenzgebiet."
+              )
+
+          elevation.tofile(
+              root / "reference-elevation.f32"
+          )
+          sea.tofile(root / "reference-sea.u8")
+          boundary.tofile(
+              root / "reference-boundary.u8"
+          )
+          (root / "reference-meta.json").write_text(
+              json.dumps({
+                  "width": width,
+                  "height": height,
+                  "max_scale": max_scale,
+                  "sentinel": sentinel,
+                  "domains": domain_meta,
+              }, indent=2) + "\n"
+          )
+
+          print(
+              (root / "reference-meta.json").read_text()
+          )
+          PY
+
+      - name: Run global expanded reference
+        run: |
+          set -euo pipefail
+
+          eval "$(
+            python - tmp/adaptive-mixed/reference-meta.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          meta = json.loads(Path(sys.argv[1]).read_text())
+          print(
+              "WIDTH="
+              + shlex.quote(str(meta["width"]))
+          )
+          print(
+              "HEIGHT="
+              + shlex.quote(str(meta["height"]))
+          )
+          PY
+          )"
+
+          /usr/bin/time -v \
+            build/priority_flood_quantized \
+              --elevation tmp/adaptive-mixed/reference-elevation.f32 \
+              --sea-mask tmp/adaptive-mixed/reference-sea.u8 \
+              --boundary-threshold tmp/adaptive-mixed/reference-boundary.u8 \
+              --output tmp/adaptive-mixed/reference-threshold.u8 \
+              --width "$WIDTH" \
+              --height "$HEIGHT" \
+              --levels "$(python scripts/threshold_levels.py --csv)" \
+              --connectivity 4 \
+            2>&1 | tee tmp/adaptive-mixed/reference.log
+
+      - name: Compare adaptive output with expanded reference
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import numpy as np
+
+          root = Path("tmp/adaptive-mixed")
+          report = json.loads(
+              (root / "output/report.json").read_text()
+          )
+          meta = json.loads(
+              (root / "reference-meta.json").read_text()
+          )
+
+          reference = np.fromfile(
+              root / "reference-threshold.u8",
+              dtype=np.uint8,
+          ).reshape(
+              (meta["height"], meta["width"])
+          )
+
+          differing = 0
+          compared = 0
+          per_domain = []
+
+          solver_domains = {
+              int(item["id"]): item
+              for item in report["solver"]["domains"]
+          }
+
+          for domain in meta["domains"]:
+              domain_id = int(domain["id"])
+              zoom = int(domain["zoom"])
+              path = (
+                  root
+                  / "output/threshold-domains"
+                  / f"r{domain_id}-c{zoom}.u8"
+              )
+              if not path.exists():
+                  raise AssertionError(
+                      f"Fehlende Domain-Ausgabe: {path}"
+                  )
+
+              solver_domain = solver_domains[domain_id]
+              height = int(solver_domain["fine_height"])
+              width = int(solver_domain["fine_width"])
+              adaptive = np.fromfile(
+                  path,
+                  dtype=np.uint8,
+              ).reshape((height, width))
+
+              ratio = int(
+                  domain["ratio_to_reference"]
+              )
+              expanded = np.repeat(
+                  np.repeat(
+                      adaptive,
+                      ratio,
+                      axis=0,
+                  ),
+                  ratio,
+                  axis=1,
+              )
+              ref = reference[
+                  domain["y0"]:domain["y1"],
+                  domain["x0"]:domain["x1"],
+              ]
+
+              local_diff = int(
+                  np.count_nonzero(expanded != ref)
+              )
+              differing += local_diff
+              compared += int(expanded.size)
+              per_domain.append({
+                  "id": domain_id,
+                  "zoom": zoom,
+                  "expanded_cells": int(
+                      expanded.size
+                  ),
+                  "differing_cells": local_diff,
+              })
+
+          comparison = {
+              "zooms": sorted({
+                  int(item["zoom"])
+                  for item in meta["domains"]
+              }),
+              "domain_count": int(
+                  report["solver"]["domain_count"]
+              ),
+              "adjacency_count": int(
+                  report["solver"]["adjacency_count"]
+              ),
+              "solver_runs": int(
+                  report["solver"]["solver_runs"]
+              ),
+              "materializations": int(
+                  report["solver"]["materializations"]
+              ),
+              "boundary_improvements": int(
+                  report["solver"][
+                      "boundary_improvements"
+                  ]
+              ),
+              "external_sea_improvements": int(
+                  report["solver"][
+                      "external_sea_improvements"
+                  ]
+              ),
+              "peak_materialized_cells": int(
+                  report["solver"][
+                      "peak_materialized_cells"
+                  ]
+              ),
+              "compared_expanded_cells": compared,
+              "differing_cells": differing,
+              "byte_equal": differing == 0,
+              "per_domain": per_domain,
+          }
+          (root / "comparison.json").write_text(
+              json.dumps(comparison, indent=2) + "\n"
+          )
+          print(json.dumps(comparison, indent=2))
+
+          if comparison["domain_count"] != 2:
+              raise AssertionError(comparison)
+          if comparison["adjacency_count"] != 1:
+              raise AssertionError(comparison)
+          if len(comparison["zooms"]) != 2:
+              raise AssertionError(comparison)
+          if comparison["boundary_improvements"] <= 0:
+              raise AssertionError(
+                  "Gemischter Realtest muss Randwerte "
+                  "über die Auflösungsgrenze austauschen."
+              )
+          if differing != 0:
+              raise AssertionError(
+                  f"{differing} expandierte Referenzzellen "
+                  "weichen vom adaptiven Solver ab."
+              )
+          PY
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-mixed-resolution-pilot
+          path: |
+            tmp/adaptive-mixed/selection.json
+            tmp/adaptive-mixed/mini-plan.json
+            tmp/adaptive-mixed/output/report.json
+            tmp/adaptive-mixed/comparison.json
+            tmp/adaptive-mixed/reference-meta.json
+            tmp/adaptive-mixed/adaptive.log
+            tmp/adaptive-mixed/reference.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-adaptive-mixed-resolution-pilot.yml ]; then
+            git rm .github/workflows/tmp-adaptive-mixed-resolution-pilot.yml
+            git commit -m "Remove temporary adaptive mixed resolution pilot"
+            git pull --rebase
+            git push
+          fi
