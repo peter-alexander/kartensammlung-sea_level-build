@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -107,6 +108,84 @@ def scatter_component(
 	del local
 
 
+def solve_direct(
+	solver_path,
+	component_dir,
+	local_threshold,
+	meta,
+	levels_csv,
+):
+	subprocess.run([
+		str(solver_path),
+		"--elevation",
+		str(component_dir / "elevation.f32"),
+		"--sea-mask",
+		str(component_dir / "sea_mask.u8"),
+		"--land-mask",
+		str(component_dir / "land_mask.bit"),
+		"--output",
+		str(local_threshold),
+		"--width",
+		str(meta["window"]["width"]),
+		"--height",
+		str(meta["window"]["height"]),
+		"--levels",
+		levels_csv,
+	], check=True)
+
+
+def solve_split(
+	domain_solver_path,
+	component_dir,
+	local_threshold,
+	meta,
+	levels_csv,
+	*,
+	domain_width,
+	domain_height,
+	domain_max_solver_runs,
+):
+	report_path = component_dir / "domain-report.json"
+	script_path = (
+		Path(__file__).resolve().with_name(
+			"process_component_domains.py"
+		)
+	)
+
+	subprocess.run([
+		sys.executable,
+		str(script_path),
+		"--elevation",
+		str(component_dir / "elevation.f32"),
+		"--sea-mask",
+		str(component_dir / "sea_mask.u8"),
+		"--land-mask",
+		str(component_dir / "land_mask.bit"),
+		"--output",
+		str(local_threshold),
+		"--work-dir",
+		str(component_dir / "domains"),
+		"--solver",
+		str(domain_solver_path),
+		"--levels",
+		levels_csv,
+		"--width",
+		str(meta["window"]["width"]),
+		"--height",
+		str(meta["window"]["height"]),
+		"--domain-width",
+		str(domain_width),
+		"--domain-height",
+		str(domain_height),
+		"--max-solver-runs",
+		str(domain_max_solver_runs),
+		"--report",
+		str(report_path),
+	], check=True)
+
+	return json.loads(report_path.read_text())
+
+
 def process_components(
 	components_report_path,
 	spans_path,
@@ -121,6 +200,11 @@ def process_components(
 	global_height,
 	halo=1,
 	component_ids=None,
+	max_direct_window_cells=0,
+	domain_solver_path=None,
+	domain_width=2048,
+	domain_height=2048,
+	domain_max_solver_runs=100000,
 ):
 	report = json.loads(
 		Path(components_report_path).read_text()
@@ -147,6 +231,24 @@ def process_components(
 				f"Unbekannte Component-IDs: {sorted(missing)}"
 			)
 
+	max_direct_window_cells = int(max_direct_window_cells)
+	domain_width = int(domain_width)
+	domain_height = int(domain_height)
+	domain_max_solver_runs = int(domain_max_solver_runs)
+
+	if max_direct_window_cells < 0:
+		raise ValueError(
+			"max_direct_window_cells muss >= 0 sein."
+		)
+	if domain_width <= 0 or domain_height <= 0:
+		raise ValueError(
+			"domain_width und domain_height müssen > 0 sein."
+		)
+	if domain_max_solver_runs <= 0:
+		raise ValueError(
+			"domain_max_solver_runs muss > 0 sein."
+		)
+
 	sentinel = len(
 		[
 			value
@@ -170,6 +272,12 @@ def process_components(
 	processed_cells = 0
 	processed_components = 0
 	peak_local_window_cells = 0
+	direct_components = 0
+	split_components = 0
+	split_solver_runs = 0
+	split_domain_count = 0
+	split_boundary_improvements = 0
+	max_split_domain_runs = 0
 
 	for component in components:
 		component_id = int(component["id"])
@@ -195,24 +303,64 @@ def process_components(
 				component_dir
 				/ "threshold.u8"
 			)
+			window_cells = int(
+				meta["window"]["cells"]
+			)
+			use_split = (
+				max_direct_window_cells > 0
+				and window_cells
+					> max_direct_window_cells
+			)
 
-			subprocess.run([
-				str(solver_path),
-				"--elevation",
-				str(component_dir / "elevation.f32"),
-				"--sea-mask",
-				str(component_dir / "sea_mask.u8"),
-				"--land-mask",
-				str(component_dir / "land_mask.bit"),
-				"--output",
-				str(local_threshold),
-				"--width",
-				str(meta["window"]["width"]),
-				"--height",
-				str(meta["window"]["height"]),
-				"--levels",
-				levels_csv,
-			], check=True)
+			if use_split:
+				if domain_solver_path is None:
+					raise ValueError(
+						"Component überschreitet "
+						"max_direct_window_cells, aber "
+						"domain_solver_path fehlt."
+					)
+
+				domain_report = solve_split(
+					domain_solver_path,
+					component_dir,
+					local_threshold,
+					meta,
+					levels_csv,
+					domain_width=domain_width,
+					domain_height=domain_height,
+					domain_max_solver_runs=(
+						domain_max_solver_runs
+					),
+				)
+				split_components += 1
+				split_solver_runs += int(
+					domain_report["solver_runs"]
+				)
+				split_domain_count += int(
+					domain_report["domain_count"]
+				)
+				split_boundary_improvements += int(
+					domain_report[
+						"boundary_improvements"
+					]
+				)
+				max_split_domain_runs = max(
+					max_split_domain_runs,
+					int(
+						domain_report[
+							"max_domain_runs"
+						]
+					),
+				)
+			else:
+				solve_direct(
+					solver_path,
+					component_dir,
+					local_threshold,
+					meta,
+					levels_csv,
+				)
+				direct_components += 1
 
 			spans = read_component_spans(
 				spans_path,
@@ -231,7 +379,7 @@ def process_components(
 			processed_components += 1
 			peak_local_window_cells = max(
 				peak_local_window_cells,
-				int(meta["window"]["cells"]),
+				window_cells,
 			)
 		finally:
 			shutil.rmtree(
@@ -244,6 +392,17 @@ def process_components(
 		"processed_cells": processed_cells,
 		"peak_local_window_cells": peak_local_window_cells,
 		"sentinel_class": sentinel,
+		"max_direct_window_cells": max_direct_window_cells,
+		"direct_components": direct_components,
+		"split_components": split_components,
+		"split_domain_count": split_domain_count,
+		"split_solver_runs": split_solver_runs,
+		"split_boundary_improvements": (
+			split_boundary_improvements
+		),
+		"max_split_domain_runs": max_split_domain_runs,
+		"domain_width": domain_width,
+		"domain_height": domain_height,
 	}
 
 
@@ -266,6 +425,31 @@ def main():
 		action="append",
 		dest="component_ids",
 	)
+	parser.add_argument(
+		"--max-direct-window-cells",
+		type=int,
+		default=0,
+		help=(
+			"0 deaktiviert den Domain-Fallback. Größere "
+			"Component-Fenster werden sonst gesplittet."
+		),
+	)
+	parser.add_argument("--domain-solver")
+	parser.add_argument(
+		"--domain-width",
+		type=int,
+		default=2048,
+	)
+	parser.add_argument(
+		"--domain-height",
+		type=int,
+		default=2048,
+	)
+	parser.add_argument(
+		"--domain-max-solver-runs",
+		type=int,
+		default=100000,
+	)
 	args = parser.parse_args()
 
 	result = process_components(
@@ -281,6 +465,15 @@ def main():
 		global_height=args.global_height,
 		halo=args.halo,
 		component_ids=args.component_ids,
+		max_direct_window_cells=(
+			args.max_direct_window_cells
+		),
+		domain_solver_path=args.domain_solver,
+		domain_width=args.domain_width,
+		domain_height=args.domain_height,
+		domain_max_solver_runs=(
+			args.domain_max_solver_runs
+		),
 	)
 
 	print(json.dumps(result, indent=2))
