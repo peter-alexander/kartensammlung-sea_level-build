@@ -44,6 +44,7 @@ def main():
 		candidate_path = tmp / "candidate.bit"
 		sea_path = tmp / "sea.u8"
 		report_path = tmp / "report.json"
+		spans_path = tmp / "components.rle"
 
 		pack_mask(candidate, candidate_path)
 		sea.tofile(sea_path)
@@ -53,6 +54,7 @@ def main():
 			"--candidate-mask", str(candidate_path),
 			"--sea-mask", str(sea_path),
 			"--report", str(report_path),
+			"--spans-output", str(spans_path),
 			"--width", str(candidate.shape[1]),
 			"--height", str(candidate.shape[0]),
 		], check=True)
@@ -78,6 +80,36 @@ def main():
 			for component in report["components"]
 		):
 			raise AssertionError(report)
+
+		if report["span_record_bytes"] != 12:
+			raise AssertionError(report)
+		if report["span_record_count"] != 10:
+			raise AssertionError(report)
+		if any(
+			component["span_count"] != 5
+			for component in report["components"]
+		):
+			raise AssertionError(report)
+
+		spans = np.fromfile(
+			spans_path,
+			dtype="<u4",
+		).reshape((-1, 3))
+		if spans.shape != (10, 3):
+			raise AssertionError(spans)
+
+		expected_spans = {
+			*( (row, 0, 1) for row in range(5) ),
+			*( (row, 5, 6) for row in range(5) ),
+		}
+		actual_spans = {
+			tuple(int(value) for value in span)
+			for span in spans
+		}
+		if actual_spans != expected_spans:
+			raise AssertionError(
+				f"expected={expected_spans} actual={actual_spans}"
+			)
 
 	print("ok")
 

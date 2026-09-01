@@ -10,6 +10,7 @@ struct Options {
 	std::string candidatePath;
 	std::string seaMaskPath;
 	std::string reportPath;
+	std::string spansPath;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 };
@@ -27,7 +28,72 @@ struct Component {
 	std::uint32_t maxRow = 0;
 	std::uint32_t minCol = 0;
 	std::uint32_t maxCol = 0;
+	std::uint64_t id = 0;
+	std::uint64_t spanOffset = 0;
+	std::uint64_t spanCount = 0;
 };
+
+class SpanWriter {
+public:
+	explicit SpanWriter(const std::string& path)
+		: enabled_(!path.empty()) {
+		if (!enabled_) {
+			return;
+		}
+
+		output_.open(path, std::ios::binary);
+		if (!output_) {
+			throw std::runtime_error(
+				"Span-Ausgabedatei konnte nicht geöffnet werden."
+			);
+		}
+	}
+
+	void write(
+		std::uint32_t row,
+		std::uint32_t left,
+		std::uint32_t right
+	) {
+		if (!enabled_) {
+			return;
+		}
+
+		writeU32(row);
+		writeU32(left);
+		writeU32(right);
+		++records_;
+	}
+
+	std::uint64_t records() const {
+		return records_;
+	}
+
+	bool enabled() const {
+		return enabled_;
+	}
+
+private:
+	void writeU32(std::uint32_t value) {
+		const char bytes[4] = {
+			static_cast<char>(value & 0xffu),
+			static_cast<char>((value >> 8) & 0xffu),
+			static_cast<char>((value >> 16) & 0xffu),
+			static_cast<char>((value >> 24) & 0xffu),
+		};
+		output_.write(bytes, 4);
+		if (!output_) {
+			throw std::runtime_error(
+				"Span-Ausgabedatei konnte nicht vollständig "
+				"geschrieben werden."
+			);
+		}
+	}
+
+	bool enabled_ = false;
+	std::ofstream output_;
+	std::uint64_t records_ = 0;
+};
+
 
 class PackedBits {
 public:
@@ -107,6 +173,13 @@ static Options parseArgs(int argc, char** argv) {
 			);
 		} else if (arg == "--report") {
 			options.reportPath = requireValue(
+				i,
+				argc,
+				argv,
+				arg
+			);
+		} else if (arg == "--spans-output") {
+			options.spansPath = requireValue(
 				i,
 				argc,
 				argv,
@@ -286,9 +359,17 @@ static Component floodComponent(
 	std::uint32_t seedCol,
 	std::uint32_t width,
 	std::uint32_t height,
-	std::size_t& maxQueuedSpans
+	std::size_t& maxQueuedSpans,
+	SpanWriter* spanWriter,
+	std::uint64_t componentId
 ) {
 	Component component;
+	component.id = componentId;
+	component.spanOffset = (
+		spanWriter != nullptr
+			? spanWriter->records()
+			: 0
+	);
 	component.minRow = seedRow;
 	component.maxRow = seedRow;
 	component.minCol = seedCol;
@@ -355,6 +436,11 @@ static Component floodComponent(
 			right
 		);
 
+		if (spanWriter != nullptr) {
+			spanWriter->write(row, left, right);
+			++component.spanCount;
+		}
+
 		queue.push_back({row, left, right});
 		maxQueuedSpans = std::max(
 			maxQueuedSpans,
@@ -417,7 +503,8 @@ static std::vector<Component> findComponents(
 	const PackedBits& seaBits,
 	std::uint32_t width,
 	std::uint32_t height,
-	std::size_t& maxQueuedSpans
+	std::size_t& maxQueuedSpans,
+	SpanWriter* spanWriter
 ) {
 	const std::size_t cellCount =
 		static_cast<std::size_t>(width) * height;
@@ -436,6 +523,11 @@ static std::vector<Component> findComponents(
 				- static_cast<std::size_t>(row) * width
 			);
 
+		const std::uint64_t componentId =
+			static_cast<std::uint64_t>(
+				components.size() + 1
+			);
+
 		components.push_back(
 			floodComponent(
 				remaining,
@@ -444,7 +536,9 @@ static std::vector<Component> findComponents(
 				col,
 				width,
 				height,
-				maxQueuedSpans
+				maxQueuedSpans,
+				spanWriter,
+				componentId
 			)
 		);
 	}
@@ -466,7 +560,9 @@ static void writeReport(
 	std::uint64_t landCandidateCells,
 	const std::vector<Component>& components,
 	std::size_t packedBytes,
-	std::size_t maxQueuedSpans
+	std::size_t maxQueuedSpans,
+	const Options& optionsForSpans,
+	std::uint64_t spanRecordCount
 ) {
 	std::ofstream output(options.reportPath);
 	if (!output) {
@@ -504,6 +600,17 @@ static void writeReport(
 		<< packedBytes << ",\n"
 		<< "\t\"max_queued_spans\": "
 		<< maxQueuedSpans << ",\n"
+		<< "\t\"spans_output\": ";
+	if (optionsForSpans.spansPath.empty()) {
+		output << "null,\n";
+	} else {
+		output
+			<< "\"" << optionsForSpans.spansPath << "\",\n";
+	}
+	output
+		<< "\t\"span_record_bytes\": 12,\n"
+		<< "\t\"span_record_count\": "
+		<< spanRecordCount << ",\n"
 		<< "\t\"components\": [\n";
 
 	for (std::size_t i = 0; i < components.size(); ++i) {
@@ -517,7 +624,12 @@ static void writeReport(
 		output
 			<< "\t\t{\n"
 			<< "\t\t\t\"rank\": " << (i + 1) << ",\n"
+			<< "\t\t\t\"id\": " << c.id << ",\n"
 			<< "\t\t\t\"cells\": " << c.cells << ",\n"
+			<< "\t\t\t\"span_offset_records\": "
+			<< c.spanOffset << ",\n"
+			<< "\t\t\t\"span_count\": "
+			<< c.spanCount << ",\n"
 			<< "\t\t\t\"pct_of_land_candidates\": "
 			<< pct << ",\n"
 			<< "\t\t\t\"coastal_cells\": "
@@ -566,13 +678,17 @@ int main(int argc, char** argv) {
 			landCandidateCells
 		);
 
+		SpanWriter spanWriter(options.spansPath);
 		std::size_t maxQueuedSpans = 0;
 		std::vector<Component> components = findComponents(
 			remaining,
 			seaBits,
 			options.width,
 			options.height,
-			maxQueuedSpans
+			maxQueuedSpans,
+			spanWriter.enabled()
+				? &spanWriter
+				: nullptr
 		);
 
 		std::uint64_t sum = 0;
@@ -592,7 +708,9 @@ int main(int argc, char** argv) {
 			landCandidateCells,
 			components,
 			remaining.bytes(),
-			maxQueuedSpans
+			maxQueuedSpans,
+			options,
+			spanWriter.records()
 		);
 
 		std::cerr
