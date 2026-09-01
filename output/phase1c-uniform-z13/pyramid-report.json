@@ -1,0 +1,595 @@
+{
+  "method": "stratified-nearest-bayer-2x2",
+  "minzoom": 6,
+  "maxzoom": 13,
+  "threshold": {
+    "scheme": "piecewise-v2",
+    "min_m": 0.0,
+    "max_m": 70.0,
+    "bands": [
+      {
+        "min_m": 0.0,
+        "max_m": 2.0,
+        "step_m": 0.1
+      },
+      {
+        "min_m": 2.0,
+        "max_m": 5.0,
+        "step_m": 0.25
+      },
+      {
+        "min_m": 5.0,
+        "max_m": 20.0,
+        "step_m": 1.0
+      },
+      {
+        "min_m": 20.0,
+        "max_m": 70.0,
+        "step_m": 5.0
+      }
+    ],
+    "class_count": 58,
+    "connectivity": 4,
+    "sentinel_class": 58,
+    "sentinel_m": 71.0,
+    "rounding": "ceil-to-next-level"
+  },
+  "sentinel": 58,
+  "levels_m": [
+    0.0,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    20.0,
+    50.0,
+    70.0
+  ],
+  "zooms": [
+    {
+      "zoom": 13,
+      "tiles": 5320,
+      "png_bytes": 30467112,
+      "tile_x": [
+        4152,
+        4221
+      ],
+      "tile_y": [
+        2660,
+        2735
+      ],
+      "global_pixel_origin": [
+        2125824,
+        1361920
+      ],
+      "raster_shape": [
+        38912,
+        35840
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826693911,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "0.5": {
+          "estimated_fine_cells": 827718393,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "1": {
+          "estimated_fine_cells": 830207174,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "2": {
+          "estimated_fine_cells": 1062843059,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "5": {
+          "estimated_fine_cells": 1187545908,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "10": {
+          "estimated_fine_cells": 1291886725,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "20": {
+          "estimated_fine_cells": 1342345740,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "50": {
+          "estimated_fine_cells": 1393261856,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        },
+        "70": {
+          "estimated_fine_cells": 1394570938,
+          "error_cells": 0,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 12,
+      "tiles": 1330,
+      "png_bytes": 10632499,
+      "tile_x": [
+        2076,
+        2110
+      ],
+      "tile_y": [
+        1330,
+        1367
+      ],
+      "global_pixel_origin": [
+        1062912,
+        680960
+      ],
+      "raster_shape": [
+        19456,
+        17920
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826692408,
+          "error_cells": -1503,
+          "error_pct_domain": -0.000108
+        },
+        "0.5": {
+          "estimated_fine_cells": 827719832,
+          "error_cells": 1439,
+          "error_pct_domain": 0.000103
+        },
+        "1": {
+          "estimated_fine_cells": 830208244,
+          "error_cells": 1070,
+          "error_pct_domain": 7.7e-05
+        },
+        "2": {
+          "estimated_fine_cells": 1062842084,
+          "error_cells": -975,
+          "error_pct_domain": -7e-05
+        },
+        "5": {
+          "estimated_fine_cells": 1187544684,
+          "error_cells": -1224,
+          "error_pct_domain": -8.8e-05
+        },
+        "10": {
+          "estimated_fine_cells": 1291886612,
+          "error_cells": -113,
+          "error_pct_domain": -8e-06
+        },
+        "20": {
+          "estimated_fine_cells": 1342345508,
+          "error_cells": -232,
+          "error_pct_domain": -1.7e-05
+        },
+        "50": {
+          "estimated_fine_cells": 1393261880,
+          "error_cells": 24,
+          "error_pct_domain": 2e-06
+        },
+        "70": {
+          "estimated_fine_cells": 1394570940,
+          "error_cells": 2,
+          "error_pct_domain": 0.0
+        }
+      }
+    },
+    {
+      "zoom": 11,
+      "tiles": 342,
+      "png_bytes": 3339091,
+      "tile_x": [
+        1038,
+        1055
+      ],
+      "tile_y": [
+        665,
+        683
+      ],
+      "global_pixel_origin": [
+        531456,
+        340480
+      ],
+      "raster_shape": [
+        9728,
+        8960
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826690176,
+          "error_cells": -3735,
+          "error_pct_domain": -0.000268
+        },
+        "0.5": {
+          "estimated_fine_cells": 827719712,
+          "error_cells": 1319,
+          "error_pct_domain": 9.5e-05
+        },
+        "1": {
+          "estimated_fine_cells": 830203872,
+          "error_cells": -3302,
+          "error_pct_domain": -0.000237
+        },
+        "2": {
+          "estimated_fine_cells": 1062835952,
+          "error_cells": -7107,
+          "error_pct_domain": -0.00051
+        },
+        "5": {
+          "estimated_fine_cells": 1187542672,
+          "error_cells": -3236,
+          "error_pct_domain": -0.000232
+        },
+        "10": {
+          "estimated_fine_cells": 1291889664,
+          "error_cells": 2939,
+          "error_pct_domain": 0.000211
+        },
+        "20": {
+          "estimated_fine_cells": 1342342256,
+          "error_cells": -3484,
+          "error_pct_domain": -0.00025
+        },
+        "50": {
+          "estimated_fine_cells": 1393261488,
+          "error_cells": -368,
+          "error_pct_domain": -2.6e-05
+        },
+        "70": {
+          "estimated_fine_cells": 1394570672,
+          "error_cells": -266,
+          "error_pct_domain": -1.9e-05
+        }
+      }
+    },
+    {
+      "zoom": 10,
+      "tiles": 90,
+      "png_bytes": 1006544,
+      "tile_x": [
+        519,
+        527
+      ],
+      "tile_y": [
+        332,
+        341
+      ],
+      "global_pixel_origin": [
+        265728,
+        170240
+      ],
+      "raster_shape": [
+        4864,
+        4480
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826683776,
+          "error_cells": -10135,
+          "error_pct_domain": -0.000727
+        },
+        "0.5": {
+          "estimated_fine_cells": 827722560,
+          "error_cells": 4167,
+          "error_pct_domain": 0.000299
+        },
+        "1": {
+          "estimated_fine_cells": 830202944,
+          "error_cells": -4230,
+          "error_pct_domain": -0.000303
+        },
+        "2": {
+          "estimated_fine_cells": 1062821440,
+          "error_cells": -21619,
+          "error_pct_domain": -0.00155
+        },
+        "5": {
+          "estimated_fine_cells": 1187549760,
+          "error_cells": 3852,
+          "error_pct_domain": 0.000276
+        },
+        "10": {
+          "estimated_fine_cells": 1291892096,
+          "error_cells": 5371,
+          "error_pct_domain": 0.000385
+        },
+        "20": {
+          "estimated_fine_cells": 1342348928,
+          "error_cells": 3188,
+          "error_pct_domain": 0.000229
+        },
+        "50": {
+          "estimated_fine_cells": 1393265664,
+          "error_cells": 3808,
+          "error_pct_domain": 0.000273
+        },
+        "70": {
+          "estimated_fine_cells": 1394570368,
+          "error_cells": -570,
+          "error_pct_domain": -4.1e-05
+        }
+      }
+    },
+    {
+      "zoom": 9,
+      "tiles": 25,
+      "png_bytes": 301799,
+      "tile_x": [
+        259,
+        263
+      ],
+      "tile_y": [
+        166,
+        170
+      ],
+      "global_pixel_origin": [
+        132864,
+        85120
+      ],
+      "raster_shape": [
+        2432,
+        2240
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826688000,
+          "error_cells": -5911,
+          "error_pct_domain": -0.000424
+        },
+        "0.5": {
+          "estimated_fine_cells": 827723776,
+          "error_cells": 5383,
+          "error_pct_domain": 0.000386
+        },
+        "1": {
+          "estimated_fine_cells": 830209536,
+          "error_cells": 2362,
+          "error_pct_domain": 0.000169
+        },
+        "2": {
+          "estimated_fine_cells": 1062849536,
+          "error_cells": 6477,
+          "error_pct_domain": 0.000464
+        },
+        "5": {
+          "estimated_fine_cells": 1187570432,
+          "error_cells": 24524,
+          "error_pct_domain": 0.001758
+        },
+        "10": {
+          "estimated_fine_cells": 1291940608,
+          "error_cells": 53883,
+          "error_pct_domain": 0.003864
+        },
+        "20": {
+          "estimated_fine_cells": 1342331648,
+          "error_cells": -14092,
+          "error_pct_domain": -0.00101
+        },
+        "50": {
+          "estimated_fine_cells": 1393271040,
+          "error_cells": 9184,
+          "error_pct_domain": 0.000659
+        },
+        "70": {
+          "estimated_fine_cells": 1394573568,
+          "error_cells": 2630,
+          "error_pct_domain": 0.000189
+        }
+      }
+    },
+    {
+      "zoom": 8,
+      "tiles": 9,
+      "png_bytes": 95290,
+      "tile_x": [
+        129,
+        131
+      ],
+      "tile_y": [
+        83,
+        85
+      ],
+      "global_pixel_origin": [
+        66432,
+        42560
+      ],
+      "raster_shape": [
+        1216,
+        1120
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826772480,
+          "error_cells": 78569,
+          "error_pct_domain": 0.005634
+        },
+        "0.5": {
+          "estimated_fine_cells": 827770880,
+          "error_cells": 52487,
+          "error_pct_domain": 0.003764
+        },
+        "1": {
+          "estimated_fine_cells": 830333952,
+          "error_cells": 126778,
+          "error_pct_domain": 0.009091
+        },
+        "2": {
+          "estimated_fine_cells": 1062947840,
+          "error_cells": 104781,
+          "error_pct_domain": 0.007513
+        },
+        "5": {
+          "estimated_fine_cells": 1187529728,
+          "error_cells": -16180,
+          "error_pct_domain": -0.00116
+        },
+        "10": {
+          "estimated_fine_cells": 1292045312,
+          "error_cells": 158587,
+          "error_pct_domain": 0.011371
+        },
+        "20": {
+          "estimated_fine_cells": 1342525440,
+          "error_cells": 179700,
+          "error_pct_domain": 0.012885
+        },
+        "50": {
+          "estimated_fine_cells": 1393254400,
+          "error_cells": -7456,
+          "error_pct_domain": -0.000535
+        },
+        "70": {
+          "estimated_fine_cells": 1394575360,
+          "error_cells": 4422,
+          "error_pct_domain": 0.000317
+        }
+      }
+    },
+    {
+      "zoom": 7,
+      "tiles": 4,
+      "png_bytes": 31354,
+      "tile_x": [
+        64,
+        65
+      ],
+      "tile_y": [
+        41,
+        42
+      ],
+      "global_pixel_origin": [
+        33216,
+        21280
+      ],
+      "raster_shape": [
+        608,
+        560
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826716160,
+          "error_cells": 22249,
+          "error_pct_domain": 0.001595
+        },
+        "0.5": {
+          "estimated_fine_cells": 827568128,
+          "error_cells": -150265,
+          "error_pct_domain": -0.010775
+        },
+        "1": {
+          "estimated_fine_cells": 830197760,
+          "error_cells": -9414,
+          "error_pct_domain": -0.000675
+        },
+        "2": {
+          "estimated_fine_cells": 1062649856,
+          "error_cells": -193203,
+          "error_pct_domain": -0.013854
+        },
+        "5": {
+          "estimated_fine_cells": 1187233792,
+          "error_cells": -312116,
+          "error_pct_domain": -0.02238
+        },
+        "10": {
+          "estimated_fine_cells": 1292181504,
+          "error_cells": 294779,
+          "error_pct_domain": 0.021137
+        },
+        "20": {
+          "estimated_fine_cells": 1342418944,
+          "error_cells": 73204,
+          "error_pct_domain": 0.005249
+        },
+        "50": {
+          "estimated_fine_cells": 1393229824,
+          "error_cells": -32032,
+          "error_pct_domain": -0.002297
+        },
+        "70": {
+          "estimated_fine_cells": 1394589696,
+          "error_cells": 18758,
+          "error_pct_domain": 0.001345
+        }
+      }
+    },
+    {
+      "zoom": 6,
+      "tiles": 2,
+      "png_bytes": 11881,
+      "tile_x": [
+        32,
+        32
+      ],
+      "tile_y": [
+        20,
+        21
+      ],
+      "global_pixel_origin": [
+        16608,
+        10640
+      ],
+      "raster_shape": [
+        304,
+        280
+      ],
+      "area_error": {
+        "0": {
+          "estimated_fine_cells": 826966016,
+          "error_cells": 272105,
+          "error_pct_domain": 0.019511
+        },
+        "0.5": {
+          "estimated_fine_cells": 827850752,
+          "error_cells": 132359,
+          "error_pct_domain": 0.009491
+        },
+        "1": {
+          "estimated_fine_cells": 830554112,
+          "error_cells": 346938,
+          "error_pct_domain": 0.024877
+        },
+        "2": {
+          "estimated_fine_cells": 1063190528,
+          "error_cells": 347469,
+          "error_pct_domain": 0.024915
+        },
+        "5": {
+          "estimated_fine_cells": 1187561472,
+          "error_cells": 15564,
+          "error_pct_domain": 0.001116
+        },
+        "10": {
+          "estimated_fine_cells": 1293172736,
+          "error_cells": 1286011,
+          "error_pct_domain": 0.092213
+        },
+        "20": {
+          "estimated_fine_cells": 1342488576,
+          "error_cells": 142836,
+          "error_pct_domain": 0.010242
+        },
+        "50": {
+          "estimated_fine_cells": 1393033216,
+          "error_cells": -228640,
+          "error_pct_domain": -0.016395
+        },
+        "70": {
+          "estimated_fine_cells": 1394606080,
+          "error_cells": 35142,
+          "error_pct_domain": 0.00252
+        }
+      }
+    }
+  ]
+}

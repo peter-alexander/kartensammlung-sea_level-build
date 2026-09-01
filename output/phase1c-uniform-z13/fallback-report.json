@@ -1,0 +1,8 @@
+{
+  "requested_missing_tile_count": 800,
+  "fallback_tile_count": 448,
+  "fallback_by_parent_zoom": {
+    "12": 448
+  },
+  "remaining_missing_tile_count": 352
+}

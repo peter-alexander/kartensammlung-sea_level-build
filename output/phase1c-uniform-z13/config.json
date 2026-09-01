@@ -1,0 +1,60 @@
+{
+  "name": "north-sea-v2-uniform-z13-western-netherlands",
+  "bounds": {
+    "west": 2.5,
+    "south": 51.2,
+    "east": 5.5,
+    "north": 53.2
+  },
+  "dem": {
+    "provider": "mapterhorn",
+    "tile_endpoint": "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp",
+    "pmtiles": "https://download.mapterhorn.com/planet.pmtiles",
+    "processing_zoom": 13,
+    "tile_size": 512,
+    "encoding": "terrarium",
+    "overzoom_fallback_minzoom": 11
+  },
+  "sea_mask": {
+    "provider": "osmdata.openstreetmap.de",
+    "url": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+    "crs": "EPSG:3857"
+  },
+  "threshold": {
+    "scheme": "piecewise-v2",
+    "min_m": 0,
+    "max_m": 70,
+    "bands": [
+      {
+        "min_m": 0,
+        "max_m": 2,
+        "step_m": 0.1
+      },
+      {
+        "min_m": 2,
+        "max_m": 5,
+        "step_m": 0.25
+      },
+      {
+        "min_m": 5,
+        "max_m": 20,
+        "step_m": 1
+      },
+      {
+        "min_m": 20,
+        "max_m": 70,
+        "step_m": 5
+      }
+    ],
+    "class_count": 58,
+    "connectivity": 4,
+    "sentinel_class": 58,
+    "sentinel_m": 71,
+    "rounding": "ceil-to-next-level"
+  },
+  "output": {
+    "tile_size": 512,
+    "encoding": "terrarium",
+    "archive": "pmtiles"
+  }
+}
