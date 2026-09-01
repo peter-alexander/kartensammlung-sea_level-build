@@ -414,33 +414,199 @@ hochaufgelöste Source, die lediglich in einer leeren Ecke der Bounding Box
 liegt, darf sonst nicht die komplette Work Region unnötig auf einen höheren
 Processing-Zoom ziehen.
 
-Der Konverter verwendet:
+Für die Source-Fidelity-Entscheidung wird die **Core-Geometrie ohne Halo**
+verwendet. Ein Halo ist nur Rechen- bzw. Sea-Kontext und darf den
+Processing-Zoom des Cores nicht erhöhen.
 
-- `components.json`,
-- `components.rle`,
-- das Parent-Grid,
-- den Grobfaktor,
-- optional einen groben Halo.
+## Zwei verschiedene grobe Sea-Masken
 
-Seine Ausgabe kann direkt als `--work-geojson` an
-`scripts/plan_work_region.py` übergeben werden.
+Der reale RLE-End-to-End-Versuch zeigte eine wichtige Trennung:
 
-Der reguläre Pfad ist damit:
+- für den konservativen 70-m-Candidate ist
+  **Sea-Any = OR aller feinen Kinder** richtig,
+- für die Zerlegung in sichere grobe Work Regions muss dagegen
+  **Pure-Sea = AND aller feinen Kinder** verwendet werden.
 
-1. grober konservativer Candidate,
-2. grobe Candidate-Land-Komponenten,
-3. eine RLE-Component -> geografische Work Region,
-4. echte Mapterhorn-Coverage auf dieser Geometrie auswerten,
-5. einen uniformen Source-Fidelity-Zoom für die Work Region wählen,
-6. gemeinsames DEM mit HTTP-Parent-Fallback materialisieren,
-7. exakten Highres-Candidate bilden,
-8. exakte Candidate-Land-Komponenten bestimmen,
-9. kleine Components direkt seriell rechnen,
-10. große Components automatisch per Domain-Fallback rechnen,
-11. Thresholds in die Gesamtausgabe schreiben und Work-Region-Daten freigeben.
+Mit Sea-Any kann eine gemischte Küstenzelle bereits als Meer gelten, obwohl sie
+noch echtes Land enthält. Würde diese Zelle aus dem groben Landgraphen
+entfernt, könnte eine reale Highres-Landverbindung künstlich getrennt werden.
+
+Pure-Sea entfernt deshalb nur Grobzellen, die garantiert vollständig aus Meer
+bestehen. Das macht Work Regions konservativ größer, kann aber keine
+Highres-Landbrücke an einer gemischten Küstenzelle abschneiden.
+
+`scripts/build_conservative_candidate_coarse.py` kann dafür beide Masken
+schreiben:
+
+- `sea-any.u8`: logisches OR, für den Candidate-Pass,
+- `sea-all.u8`: logisches AND, für die Work-Region-Komponenten.
+
+### Faktor-16-Benchmark mit Pure-Sea
+
+Auf der Nordadria-/Alpen-Domain änderte sich die Work-Region-Verteilung
+deutlich:
+
+| Kennzahl | Sea-Any als Trenner | Pure-Sea als Trenner |
+| --- | ---: | ---: |
+| Work Regions | 580 | **87** |
+| größte Work Region | 131.893 Zellen | **145.198 Zellen** |
+| Anteil der größten Region | 92,82 % | **96,73 %** |
+
+Weitere Pure-Sea-Werte:
+
+- Candidate-Land-Grobzellen: 150.103,
+- Work Regions mit höchstens 4 Zellen: 52,
+- mit höchstens 16 Zellen: 64,
+- mit höchstens 64 Zellen: 74,
+- Sea-Any-Zellen: 168.127,
+- Pure-Sea-Zellen: 160.115.
+
+Die frühere kleine slowenische Pilotzelle gehört mit der sicheren Regel
+korrekt zur großen zusammenhängenden Küsten-Work-Region.
+
+Damit war klar, dass
+
+`ganze Work Region -> vollständiges Highres-DEM -> danach Domains`
+
+nicht der Produktionspfad sein kann. Die größte sichere Work Region wäre in
+Source-Fidelity-Auflösung bereits **vor** der späteren Component-Zerlegung zu
+groß.
+
+## Lazy Highres-Domains vor vollständiger Materialisierung
+
+Der skalierbare Pfad teilt eine große sichere Work Region deshalb bereits vor
+dem vollständigen Highres-DEM in numerische Domains.
+
+`scripts/process_lazy_domains.py` implementiert die monotone
+Domain-Konvergenz mit einem Materializer-Callback:
+
+1. eine aktive Domain auswählen,
+2. nur ihre lokalen Daten materialisieren,
+3. bekannte Randthresholds als Boundary-Seeds einspielen,
+4. Domain-Priority-Flood rechnen,
+5. verbesserte Randthresholds an Nachbardomains weitergeben,
+6. Domain-Dateien sofort wieder löschen,
+7. eine Nachbardomain nur dann erneut rechnen, wenn sich ihr Rand verbessert.
+
+Der generische synthetische Referenztest enthält auch einen Sea-Kontakt exakt
+über einer Domain-Grenze und ist auf allen Work-Region-Zellen bytegleich mit
+einem globalen Priority-Flood.
+
+Die Ausgabe kann ebenfalls sparse erfolgen: statt eines riesigen rechteckigen
+Highres-Rohfiles wird pro aktiver Domain eine Threshold-Datei geschrieben.
+
+## Sparse Domainplanung aus RLE
+
+`scripts/plan_lazy_work_region_domains.py` projiziert die groben RLE-Spans in
+das Fine-Raster und plant nur numerische Domains, die den Work-Region-Core
+tatsächlich schneiden.
+
+Leere Domains innerhalb der Bounding Box werden nicht materialisiert und
+erzeugen auch keine Threshold-Ausgabe.
+
+## Lazy Mapterhorn-Materialisierung
+
+`scripts/materialize_mapterhorn_work_region_domain.py` materialisiert eine
+einzige numerische Domain:
+
+- nur die benötigten Mapterhorn-ZXY-Tiles,
+- HTTP-Parent-Fallback für fehlende High-Zoom-Tiles,
+- RLE-Core als Fine-Landmaske,
+- Elevation außerhalb des Cores wird `NaN`,
+- Sea-Maske aus OSM-Wasserpolygonen,
+- zusätzlicher 1-Pixel-Sea-Rand für Küstenkontakte außerhalb der Domain.
+
+`scripts/process_lazy_mapterhorn_work_region.py` verbindet diesen Materializer
+mit dem lazy Domain-Solver und schreibt sparse Threshold-Domains.
+
+### Realer Multi-Domain-Pilot
+
+Eine sichere reale Faktor-16-Work-Region wurde vollständig über diesen Pfad
+gerechnet und gegen einen globalen QA-Priority-Flood derselben Region
+verglichen.
+
+Work Region:
+
+- Component-ID: 5,
+- 1.569 grobe Candidate-Zellen,
+- 424 RLE-Spans,
+- Source: `glo30`,
+- native Auflösung: 30 m,
+- Source-Fidelity: **Z11**.
+
+Fine-Raster der QA-Bounding-Box:
+
+- 1.024 x 3.584,
+- 3.670.016 Zellen,
+- 14 mögliche 512-x-512-Domains,
+- davon nur **12 aktive sparse Domains**.
+
+Lazy-Lauf:
+
+- 23 Solver-Läufe,
+- 23 Domain-Materialisierungen,
+- 1.569 verbesserte Domain-Randwerte,
+- 416 externe Sea-Randverbesserungen,
+- maximal gleichzeitig materialisiert:
+  **512 x 512 = 262.144 Zellen**,
+- temporäre Domain-Daten nach jedem Lauf vollständig gelöscht,
+- sparse Threshold-Ausgabe: 12 Dateien / 3.145.728 Bytes,
+- Peak-RSS des gesamten Python-Laufs: **227.344 KiB**,
+- Laufzeit: **17,77 s**.
+
+Bytevergleich:
+
+- verglichene Work-Region-Landzellen: **401.664**,
+- abweichende Zellen: **0**,
+- nicht-Sentinel-Zellen außerhalb des Work-Region-Cores: **0**,
+- fehlende Domain-Ausgaben: **0**.
+
+Damit ist die reale Kette
+
+`sichere grobe RLE-Work-Region -> sparse Fine-Domains -> Domain einzeln
+materialisieren -> Randthresholds austauschen -> Domain löschen`
+
+fachlich validiert.
+
+Der Pilot liegt allerdings nur auf `glo30` und damit Z11. Er beweist die reale
+lazy Mapterhorn-/Sea-/RLE-Kopplung und Domain-Konvergenz, aber **noch nicht die
+Skalierung einer großen Z14-/Z16-Work-Region**.
+
+## Aktueller Produktionspfad
+
+Der geplante reguläre Ablauf ist jetzt:
+
+1. gestreamtes grobes Parent-DEM,
+2. konservativer Grob-Candidate mit Sea-Any,
+3. sichere grobe Work Regions mit Pure-Sea,
+4. eine RLE-Work-Region auswählen,
+5. Core-Geometrie gegen echte Mapterhorn-Coverage schneiden,
+6. Source-Fidelity-Zoom des Cores bestimmen,
+7. nur aktive Fine-Domains aus dem RLE-Core planen,
+8. **eine Fine-Domain materialisieren**,
+9. Priority-Flood mit Sea- und Boundary-Seeds rechnen,
+10. verbesserte Randthresholds weitergeben,
+11. Domain-Daten freigeben,
+12. bei Randverbesserung betroffene Domain erneut rechnen,
+13. konvergierte Threshold-Domain sparse schreiben,
+14. nächste Work Region.
+
+Damit ist der RAM-Verbrauch nicht mehr von der Gesamtfläche einer
+zusammenhängenden Küsten-Work-Region abhängig, sondern primär von der gewählten
+numerischen Domain-Größe.
 
 ## Nächster Prüfpunkt
 
-Als Nächstes wird diese Kette an einer **realen groben RLE-Work-Region**
-durchgehend ausgeführt. Danach fehlt nur noch die Orchestrierung über alle
-groben Work Regions nacheinander.
+Als Nächstes werden die **87 sicheren Faktor-16-Work-Regions** gegen die echten
+Mapterhorn-Coverage-Geometrien gescannt.
+
+Gesucht wird gezielt eine reale Work Region mit:
+
+- Source-Fidelity > Z11, idealerweise Z14-Z16,
+- mehr als einer aktiven Fine-Domain,
+- noch überschaubarer Gesamtgröße für einen globalen QA-Referenzlauf.
+
+An dieser Region wird derselbe lazy Bytevergleich wiederholt. Erst danach wird
+die sehr große 96,73-%-Work-Region ohne globale Referenz auf den
+Source-Fidelity-Pfad losgelassen.
+
