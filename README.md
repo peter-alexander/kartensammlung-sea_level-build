@@ -130,9 +130,13 @@ Die Multi-Resolution-Kopplung ist real an einer direkten
 Referenzgraphen validiert: 524.288 Vergleichszellen, **0 Unterschiede**.
 
 Ein zusammenhängender 128-Domain-Benchmark mit warmem Mapterhorn-Cache brauchte
-37,52 s bei 183.464 KiB Peak-RSS. Der adaptive Tile-Prefetch reduziert dabei
-24.502 Domain-Tile-Referenzen des Vollplans auf nur **4.615 eindeutige
-Mapterhorn-Tiles**.
+37,52 s bei 183.464 KiB Peak-RSS. Eine konservative Sea-seeded Initial-Queue
+reduzierte denselben Lauf von 416 auf **394 Solver-Läufe** und auf 36,49 s.
+Eine zusätzliche Finalisierungsprüfung bricht fail-closed ab, falls der
+Seed-Plan wider Erwarten eine echte Sea-Domain übersehen hätte.
+
+Der adaptive Tile-Prefetch reduziert dabei 24.502 Domain-Tile-Referenzen des
+Vollplans auf nur **4.615 eindeutige Mapterhorn-Tiles**.
 
 Längere adaptive Läufe unterstützen inzwischen Checkpoint/Resume. Der
 Konvergenzzustand besteht nur aus Queue, Randthresholds und Countern; die
