@@ -55,6 +55,7 @@ jobs:
           python tests/test_grid.py
           python tests/test_coverage_planner.py
           python tests/test_prepare_refinement_region.py
+          python tests/test_prepare_candidate_work_region.py
           python tests/test_plan_work_region.py
           python tests/test_composite_threshold.py
           python tests/test_write_ocean_mask_raw.py
