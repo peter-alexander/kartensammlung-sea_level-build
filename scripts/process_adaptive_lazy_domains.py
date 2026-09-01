@@ -161,6 +161,72 @@ def side_values(result, land, side):
 	raise ValueError(f"Unbekannte Domain-Seite: {side}")
 
 
+def build_external_sea_allow_masks(
+	domains,
+	adjacency_by_domain,
+):
+	masks = {}
+	excluded = 0
+
+	for key, domain in domains.items():
+		width = int(domain["fine_width"])
+		height = int(domain["fine_height"])
+		allowed = {
+			"top": np.ones(width, dtype=bool),
+			"bottom": np.ones(width, dtype=bool),
+			"left": np.ones(height, dtype=bool),
+			"right": np.ones(height, dtype=bool),
+		}
+
+		for adjacency in adjacency_by_domain.get(key, ()):
+			if adjacency["a"] == key:
+				side = adjacency["a_side"]
+			else:
+				side = adjacency["b_side"]
+
+			start = side_offset(
+				domain,
+				side,
+				adjacency["coarse_start"],
+			)
+			end = side_offset(
+				domain,
+				side,
+				adjacency["coarse_end"],
+			)
+			excluded += int(
+				np.count_nonzero(
+					allowed[side][start:end]
+				)
+			)
+			allowed[side][start:end] = False
+
+		masks[key] = allowed
+
+	return masks, excluded
+
+
+def filter_external_sea(external_sea, allowed):
+	if not external_sea:
+		return None
+
+	result = {}
+	for side, allow in allowed.items():
+		values = external_sea.get(side)
+		if values is None:
+			continue
+
+		values = np.asarray(values, dtype=bool)
+		if values.shape != allow.shape:
+			raise ValueError(
+				f"External-Sea-Länge passt nicht für {side}: "
+				f"{values.shape} != {allow.shape}"
+			)
+		result[side] = values & allow
+
+	return result
+
+
 def resample_thresholds(
 	values,
 	source_scale,
@@ -343,6 +409,13 @@ def process_adaptive_lazy_domains(
 	adjacencies, adjacency_by_domain = build_adjacencies(
 		domains
 	)
+	(
+		external_sea_allow_masks,
+		internal_edge_pixels_excluded_from_external_sea,
+	) = build_external_sea_allow_masks(
+		domains,
+		adjacency_by_domain,
+	)
 
 	work_dir = Path(work_dir)
 	shutil.rmtree(work_dir, ignore_errors=True)
@@ -435,7 +508,10 @@ def process_adaptive_lazy_domains(
 				apply_external_sea_seeds(
 					domain,
 					land,
-					meta.get("external_sea"),
+					filter_external_sea(
+						meta.get("external_sea"),
+						external_sea_allow_masks[key],
+					),
 					sentinel,
 				)
 			)
@@ -534,6 +610,9 @@ def process_adaptive_lazy_domains(
 		"materializations": materializations,
 		"boundary_improvements": boundary_improvements,
 		"external_sea_improvements": external_sea_improvements,
+		"internal_edge_pixels_excluded_from_external_sea": (
+			internal_edge_pixels_excluded_from_external_sea
+		),
 		"peak_materialized_cells": peak_materialized_cells,
 		"max_fine_width": max_fine_width,
 		"max_fine_height": max_fine_height,
