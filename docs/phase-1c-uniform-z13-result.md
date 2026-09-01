@@ -2,6 +2,13 @@
 
 Stand: 1. September 2026
 
+> **Einordnung nach dem Source-Resolution-Benchmark:** Dieser Datensatz bleibt
+> der validierte Nachweis für die uniforme Processing-Domain-Architektur und ein
+> nützlicher QA-Vergleich. Er ist nicht mehr die empfohlene Endauflösung für
+> AHN5. Z13 hat bei ungefähr 52 Grad Nord rund 5,88 m Bodenpixel und
+> unterabtastet die native 5-m-Source knapp; Z14 zeigte relevante topologische
+> Unterschiede.
+
 ## Ziel
 
 Der Versuch prüft, ob die im hierarchischen Z13-Composite beobachtete

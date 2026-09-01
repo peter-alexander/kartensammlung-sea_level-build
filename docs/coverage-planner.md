@@ -120,7 +120,7 @@ Beispiele bei ungefähr 52° N:
 Damit wird eine 5-m-Quelle nicht unnötig auf ~12 m vergröbert. Gleichzeitig
 führt eine 0,5- oder 1-m-Quelle nicht automatisch zu einem 1-m-Arbeitsraster.
 
-### Warum AHN5 jetzt Z13 erhält
+### Warum AHN5 Source-Fidelity Z14 benötigt
 
 Der historische V1-Benchmark verwendete 1-m-Thresholdklassen. Darin erschien
 Z12 gegenüber Z13 sehr ähnlich.
@@ -142,7 +142,19 @@ Das ist kein allgemeiner 44-%-Fehler. Eine einzelne hydraulisch entscheidende
 Barriere wird bei Z12 um eine 0,25-m-Stufe zu niedrig abgebildet und öffnet
 dadurch eine große zusammenhängende Polderfläche zu früh.
 
-Für AHN5 5 m ist Z13 daher die fachlich passende automatische Stufe.
+Der anschließende Z13-Z14-Benchmark zeigte jedoch, dass auch Z13 noch nicht
+konvergiert: Bei 3,75 m unterscheiden sich 44,268125 % der Samplezellen im
+Überflutungszustand. Z13 hat bei ungefähr 52 Grad Nord rund 5,88 m Bodenpixel
+und ist damit knapp gröber als die native AHN5-Auflösung von 5 m. Z14 liefert
+rund 2,94 m und ist die erste Stufe, die die Source nicht unterabtastet.
+
+Daher gilt jetzt getrennt:
+
+- ausführbare Legacy-Empfehlung: vorerst Z13,
+- Source-Fidelity-Zoom: **Z14**.
+
+Die Legacy-Empfehlung wird erst dann automatisch auf Source-Fidelity umgestellt,
+wenn Z14-Domains technisch sicher skaliert werden können.
 
 ### Tier 3 – QA-Kandidat
 
@@ -188,13 +200,21 @@ aktuellen Mapterhorn-Coverage bestätigt.
 - `tier2.geojson`: vereinigte automatische Tier-2-Coverage,
 - `tier3-candidates.geojson`: vereinigte Tier-3-QA-Coverage.
 
-Planner-Schema V3 speichert zusätzlich:
+Planner-Schema V4 speichert zusätzlich:
 
 - `recommended_target_ground_resolution_m`,
 - `recommended_processing_zoom`,
 - `recommended_ground_resolution_m`,
+- `source_fidelity_processing_zoom`,
+- `source_fidelity_ground_resolution_m`,
+- `source_fidelity_undersampled_by_recommendation`,
 - `requires_z13_plus`,
 - entsprechende Tier-3-QA-Zielwerte.
+
+Der Source-Fidelity-Zoom ist die erste Web-Mercator-Stufe, deren Bodenpixel
+nicht gröber als die native Source-Auflösung sind. Er wird auf die feinere
+Stufe aufgerundet, damit die Source nicht bereits bei der Rasterfestlegung
+unterabgetastet wird.
 
 ## Nordsee-Kontext
 
@@ -204,7 +224,7 @@ ist grundsätzlich Z12“ ist mit V3 überholt.
 
 Beispiele:
 
-- Niederlande, AHN5 5 m → automatisch ungefähr 6 m / Z13,
+- Niederlande, AHN5 5 m → ausführbar derzeit Z13, Source-Fidelity Z14,
 - Dänemark 0,4 m → automatisch ungefähr 6 m; zusätzlich ~3-m-QA-Kandidat,
 - deutsche 0,25–1-m-Sources → ebenfalls nicht native Auflösung, sondern
   automatisch mindestens ungefähr 6 m.
