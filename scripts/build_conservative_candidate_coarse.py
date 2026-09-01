@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,7 @@ def build_conservative_coarse(
 	output_elevation_path,
 	output_sea_mask_path,
 	*,
+	output_pure_sea_mask_path=None,
 	width,
 	height,
 	factor,
@@ -64,15 +66,31 @@ def build_conservative_coarse(
 	output_sea_mask_path = Path(output_sea_mask_path)
 	output_elevation_path.parent.mkdir(parents=True, exist_ok=True)
 	output_sea_mask_path.parent.mkdir(parents=True, exist_ok=True)
+	if output_pure_sea_mask_path is not None:
+		output_pure_sea_mask_path = Path(
+			output_pure_sea_mask_path
+		)
+		output_pure_sea_mask_path.parent.mkdir(
+			parents=True,
+			exist_ok=True,
+		)
 
 	finite_coarse_cells = 0
 	sea_coarse_cells = 0
+	pure_sea_coarse_cells = 0
+
+	pure_sea_context = (
+		open(output_pure_sea_mask_path, "wb")
+		if output_pure_sea_mask_path is not None
+		else nullcontext(None)
+	)
 
 	with (
 		open(elevation_path, "rb") as elevation_file,
 		open(sea_mask_path, "rb") as sea_file,
 		open(output_elevation_path, "wb") as coarse_elevation_file,
 		open(output_sea_mask_path, "wb") as coarse_sea_file,
+		pure_sea_context as coarse_pure_sea_file,
 	):
 		for coarse_row0 in range(
 			0,
@@ -136,18 +154,27 @@ def build_conservative_coarse(
 				np.uint8,
 				copy=False,
 			)
+			sea_all = sea_blocks.min(axis=(1, 3)).astype(
+				np.uint8,
+				copy=False,
+			)
 
 			minimum.astype(
 				np.float32,
 				copy=False,
 			).tofile(coarse_elevation_file)
 			sea_or.tofile(coarse_sea_file)
+			if coarse_pure_sea_file is not None:
+				sea_all.tofile(coarse_pure_sea_file)
 
 			finite_coarse_cells += int(
 				np.count_nonzero(has_finite)
 			)
 			sea_coarse_cells += int(
 				np.count_nonzero(sea_or)
+			)
+			pure_sea_coarse_cells += int(
+				np.count_nonzero(sea_all)
 			)
 
 	return {
@@ -162,13 +189,20 @@ def build_conservative_coarse(
 		"coarse_cells": coarse_cells,
 		"elevation_rule": "minimum-of-finite-children",
 		"sea_rule": "logical-or-of-children",
+		"pure_sea_rule": "logical-and-of-children",
 		"finite_coarse_cells": finite_coarse_cells,
 		"sea_coarse_cells": sea_coarse_cells,
+		"pure_sea_coarse_cells": pure_sea_coarse_cells,
 		"output_elevation_bytes": (
 			coarse_cells * np.dtype(np.float32).itemsize
 		),
 		"output_sea_mask_bytes": (
 			coarse_cells * np.dtype(np.uint8).itemsize
+		),
+		"output_pure_sea_mask_bytes": (
+			coarse_cells * np.dtype(np.uint8).itemsize
+			if output_pure_sea_mask_path is not None
+			else 0
 		),
 	}
 
@@ -179,6 +213,7 @@ def main():
 	parser.add_argument("--sea-mask", required=True)
 	parser.add_argument("--output-elevation", required=True)
 	parser.add_argument("--output-sea-mask", required=True)
+	parser.add_argument("--output-pure-sea-mask")
 	parser.add_argument("--report", required=True)
 	parser.add_argument("--width", type=int, required=True)
 	parser.add_argument("--height", type=int, required=True)
@@ -191,6 +226,7 @@ def main():
 		args.sea_mask,
 		args.output_elevation,
 		args.output_sea_mask,
+		output_pure_sea_mask_path=args.output_pure_sea_mask,
 		width=args.width,
 		height=args.height,
 		factor=args.factor,
