@@ -269,6 +269,26 @@ def ground_resolution(latitude, zoom, tile_size=512):
 	)
 
 
+def minimum_zoom_for_ground_resolution(
+	latitude,
+	target_ground_resolution_m,
+	tile_size=512,
+):
+	latitude = max(-85.0, min(85.0, float(latitude)))
+	target = float(target_ground_resolution_m)
+
+	if target <= 0.0:
+		raise ValueError("target_ground_resolution_m muss > 0 sein.")
+
+	value = math.log2(
+		WEB_MERCATOR_WORLD
+		* math.cos(math.radians(latitude))
+		/ (tile_size * target)
+	)
+
+	return max(0, int(math.ceil(value - 1e-12)))
+
+
 def source_tier(
 	resolution,
 	*,
@@ -307,6 +327,18 @@ def processing_recommendations(
 		if source_resolution is not None
 		else None
 	)
+
+	source_fidelity_zoom = None
+	source_fidelity_ground = None
+	if source_resolution is not None:
+		source_fidelity_zoom = minimum_zoom_for_ground_resolution(
+			latitude,
+			source_resolution,
+		)
+		source_fidelity_ground = ground_resolution(
+			latitude,
+			source_fidelity_zoom,
+		)
 
 	automatic_target = None
 	automatic_processing_zoom = None
@@ -347,6 +379,17 @@ def processing_recommendations(
 		)
 
 	return {
+		"source_fidelity_processing_zoom": source_fidelity_zoom,
+		"source_fidelity_ground_resolution_m": (
+			round(source_fidelity_ground, 3)
+			if source_fidelity_ground is not None
+			else None
+		),
+		"source_fidelity_undersampled_by_recommendation": (
+			automatic_ground is not None
+			and source_resolution is not None
+			and automatic_ground > source_resolution + 1e-9
+		),
 		"recommended_target_ground_resolution_m": (
 			round(automatic_target, 3)
 			if automatic_target is not None
@@ -633,7 +676,7 @@ def plan(
 	archives = intersecting_archives(download_data, bounds)
 
 	result = {
-		"schema_version": 3,
+		"schema_version": 4,
 		"generated_at": datetime.now(timezone.utc).isoformat(),
 		"bounds": list(bounds),
 		"coverage": {

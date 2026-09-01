@@ -14,6 +14,7 @@ from coverage_planner import (
 	context_bounds_for_bbox,
 	decode_coverage_tile,
 	ground_resolution,
+	minimum_zoom_for_ground_resolution,
 	processing_recommendations,
 	recommended_zoom,
 	source_tier,
@@ -37,6 +38,19 @@ def test_resolution_rules():
 	if recommended_zoom(52.0, 3.0) != 14:
 		raise AssertionError("52°N / 3m muss ungefähr Z14 ergeben.")
 
+	if minimum_zoom_for_ground_resolution(52.0, 5.0) != 14:
+		raise AssertionError(
+			"5m-Source darf bei 52°N nicht gröber als Z14 verarbeitet werden."
+		)
+	if minimum_zoom_for_ground_resolution(52.0, 10.0) != 13:
+		raise AssertionError(
+			"10m-Source benötigt bei 52°N mindestens Z13."
+		)
+	if minimum_zoom_for_ground_resolution(52.0, 1.0) != 16:
+		raise AssertionError(
+			"1m-Source benötigt bei 52°N mindestens Z16."
+		)
+
 	tier_5m = source_tier(5.0)
 	if tier_5m["automatic_tier"] != 2:
 		raise AssertionError("5m-Quelle muss Tier 2 sein.")
@@ -50,8 +64,12 @@ def test_resolution_rules():
 		raise AssertionError(five_meter)
 	if five_meter["recommended_processing_zoom"] != 13:
 		raise AssertionError(
-			"5m-Quelle muss bei 52°N automatisch ungefähr Z13 erhalten."
+			"5m-Quelle bleibt vorerst bei der ausführbaren Z13-Empfehlung."
 		)
+	if five_meter["source_fidelity_processing_zoom"] != 14:
+		raise AssertionError(five_meter)
+	if not five_meter["source_fidelity_undersampled_by_recommendation"]:
+		raise AssertionError(five_meter)
 
 	tier_10m = source_tier(10.0)
 	ten_meter = processing_recommendations(
@@ -63,8 +81,12 @@ def test_resolution_rules():
 		raise AssertionError(ten_meter)
 	if ten_meter["recommended_processing_zoom"] != 12:
 		raise AssertionError(
-			"10m-Quelle muss bei 52°N ungefähr Z12 erhalten."
+			"10m-Quelle bleibt vorerst bei der ausführbaren Z12-Empfehlung."
 		)
+	if ten_meter["source_fidelity_processing_zoom"] != 13:
+		raise AssertionError(ten_meter)
+	if not ten_meter["source_fidelity_undersampled_by_recommendation"]:
+		raise AssertionError(ten_meter)
 
 	tier_1m = source_tier(1.0)
 	if tier_1m["automatic_tier"] != 2:
@@ -85,6 +107,8 @@ def test_resolution_rules():
 		raise AssertionError(
 			"1m-Quelle soll ungefähr 3m nur als Tier-3-QA-Kandidat erhalten."
 		)
+	if one_meter["source_fidelity_processing_zoom"] != 16:
+		raise AssertionError(one_meter)
 
 	if source_tier(20.0)["automatic_tier"] != 1:
 		raise AssertionError(
