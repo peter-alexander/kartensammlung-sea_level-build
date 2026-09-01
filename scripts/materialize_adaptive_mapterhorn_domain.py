@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from collections import OrderedDict
 from pathlib import Path
 
 import fiona
@@ -134,6 +135,8 @@ class AdaptiveMapterhornDomainMaterializer:
 		workers=8,
 		fallback_min_zoom=None,
 		tile_size=512,
+		decoded_tile_cache_size=64,
+		sea_halo_cache_size=512,
 	):
 		self.parent_grid = dict(parent_grid)
 		self.sea_vector_path = Path(sea_vector_path)
@@ -146,11 +149,35 @@ class AdaptiveMapterhornDomainMaterializer:
 			else int(fallback_min_zoom)
 		)
 		self.sea_source = None
+		self.decoded_tile_cache_size = int(
+			decoded_tile_cache_size
+		)
+		self.sea_halo_cache_size = int(
+			sea_halo_cache_size
+		)
+		self.decoded_tile_cache = OrderedDict()
+		self.sea_halo_cache = OrderedDict()
+		self.cache_counters = {
+			"decoded_tile_hits": 0,
+			"decoded_tile_misses": 0,
+			"decoded_tile_peak_entries": 0,
+			"sea_halo_hits": 0,
+			"sea_halo_misses": 0,
+			"sea_halo_peak_entries": 0,
+		}
 
 		if self.workers <= 0:
 			raise ValueError("workers muss > 0 sein.")
 		if self.tile_size <= 0:
 			raise ValueError("tile_size muss > 0 sein.")
+		if self.decoded_tile_cache_size < 0:
+			raise ValueError(
+				"decoded_tile_cache_size muss >= 0 sein."
+			)
+		if self.sea_halo_cache_size < 0:
+			raise ValueError(
+				"sea_halo_cache_size muss >= 0 sein."
+			)
 		if not self.sea_vector_path.exists():
 			raise FileNotFoundError(self.sea_vector_path)
 
@@ -164,6 +191,78 @@ class AdaptiveMapterhornDomainMaterializer:
 			self.close()
 		except Exception:
 			pass
+
+	def cache_stats(self):
+		return {
+			**self.cache_counters,
+			"decoded_tile_entries": len(
+				self.decoded_tile_cache
+			),
+			"sea_halo_entries": len(
+				self.sea_halo_cache
+			),
+			"decoded_tile_cache_size": (
+				self.decoded_tile_cache_size
+			),
+			"sea_halo_cache_size": (
+				self.sea_halo_cache_size
+			),
+		}
+
+	def _cache_get(self, cache, key, hit_counter):
+		value = cache.get(key)
+		if value is None:
+			return None
+		cache.move_to_end(key)
+		self.cache_counters[hit_counter] += 1
+		return value
+
+	def _cache_put(
+		self,
+		cache,
+		key,
+		value,
+		limit,
+		peak_counter,
+	):
+		if limit <= 0:
+			return
+		cache[key] = value
+		cache.move_to_end(key)
+		while len(cache) > limit:
+			cache.popitem(last=False)
+		self.cache_counters[peak_counter] = max(
+			self.cache_counters[peak_counter],
+			len(cache),
+		)
+
+	def _decoded_exact_tile(self, zoom, x, y):
+		key = (int(zoom), int(x), int(y))
+		cached = self._cache_get(
+			self.decoded_tile_cache,
+			key,
+			"decoded_tile_hits",
+		)
+		if cached is not None:
+			return cached
+
+		self.cache_counters[
+			"decoded_tile_misses"
+		] += 1
+		tile = decode_terrarium(
+			tile_path(
+				self.cache_dir,
+				*key,
+			)
+		)
+		self._cache_put(
+			self.decoded_tile_cache,
+			key,
+			tile,
+			self.decoded_tile_cache_size,
+			"decoded_tile_peak_entries",
+		)
+		return tile
 
 	def _domain_grid(self, domain):
 		return adaptive_domain_grid(
@@ -242,16 +341,22 @@ class AdaptiveMapterhornDomainMaterializer:
 		x,
 		y,
 		tile_info,
-		decoded_parents,
+		_decoded_parents=None,
 	):
+		target_key = (int(zoom), int(x), int(y))
+		cached = self._cache_get(
+			self.decoded_tile_cache,
+			target_key,
+			"decoded_tile_hits",
+		)
+		if cached is not None:
+			return cached
+
 		if tile_info["status"][(x, y)] != "missing":
-			return decode_terrarium(
-				tile_path(
-					self.cache_dir,
-					zoom,
-					x,
-					y,
-				)
+			return self._decoded_exact_tile(
+				zoom,
+				x,
+				y,
 			)
 
 		fallback = tile_info["fallbacks"][(x, y)]
@@ -260,21 +365,24 @@ class AdaptiveMapterhornDomainMaterializer:
 			int(fallback["parent_x"]),
 			int(fallback["parent_y"]),
 		)
-		if parent_key not in decoded_parents:
-			decoded_parents[parent_key] = decode_terrarium(
-				tile_path(
-					self.cache_dir,
-					*parent_key,
-				)
-			)
-
-		return overzoom_parent_tile(
-			decoded_parents[parent_key],
+		parent = self._decoded_exact_tile(
+			*parent_key,
+		)
+		tile = overzoom_parent_tile(
+			parent,
 			x,
 			y,
 			zoom,
 			parent_key[0],
 		)
+		self._cache_put(
+			self.decoded_tile_cache,
+			target_key,
+			tile,
+			self.decoded_tile_cache_size,
+			"decoded_tile_peak_entries",
+		)
+		return tile
 
 	def _materialize_elevation(self, grid, output_path):
 		tile_info = self._download_tiles(grid)
@@ -336,6 +444,29 @@ class AdaptiveMapterhornDomainMaterializer:
 		return self.sea_source
 
 	def _rasterize_sea_halo(self, grid):
+		cache_key = (
+			int(grid["zoom"]),
+			int(grid["global_pixel_x0"]),
+			int(grid["global_pixel_y0"]),
+			int(grid["width"]),
+			int(grid["height"]),
+		)
+		cached = self._cache_get(
+			self.sea_halo_cache,
+			cache_key,
+			"sea_halo_hits",
+		)
+		if cached is not None:
+			packed, shape = cached
+			return np.unpackbits(
+				np.frombuffer(
+					packed,
+					dtype=np.uint8,
+				),
+				count=shape[0] * shape[1],
+			).reshape(shape)
+
+		self.cache_counters["sea_halo_misses"] += 1
 		resolution = float(grid["resolution"])
 		width = int(grid["width"]) + 2
 		height = int(grid["height"]) + 2
@@ -361,7 +492,7 @@ class AdaptiveMapterhornDomainMaterializer:
 			-resolution,
 			top,
 		)
-		return rasterize(
+		result = rasterize(
 			(
 				(geometry, 1)
 				for geometry in geometries
@@ -371,6 +502,19 @@ class AdaptiveMapterhornDomainMaterializer:
 			transform=transform_affine,
 			dtype=np.uint8,
 		)
+		self._cache_put(
+			self.sea_halo_cache,
+			cache_key,
+			(
+				np.packbits(
+					result.reshape(-1)
+				).tobytes(),
+				result.shape,
+			),
+			self.sea_halo_cache_size,
+			"sea_halo_peak_entries",
+		)
+		return result
 
 	def __call__(self, domain, domain_dir):
 		domain_dir = Path(domain_dir)
