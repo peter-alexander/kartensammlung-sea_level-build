@@ -111,9 +111,33 @@ und löscht die lokalen DEM-Daten danach wieder.
 
 Ein realer Multi-Domain-Pilot mit 12 aktiven 512-x-512-Domains und 23
 Materialisierungen war auf 401.664 Work-Region-Zellen bytegleich mit einem
-globalen QA-Priority-Flood. Der gemessene Peak-RSS des lazy Laufs lag bei
-227.344 KiB. Dieser Pilot lag auf GLO-30 / Z11; der nächste Prüfpunkt ist
-derselbe Vergleich auf einer echten Z14-Z16-Work-Region.
+globalen QA-Priority-Flood.
+
+Für die große zusammenhängende Work Region wird die Auflösung inzwischen
+**adaptiv innerhalb desselben Solver-Graphen** gewählt. Der reale
+Component-1-Plan enthält:
+
+- 14.248 grobe Z11-Zellen,
+- 114.317 grobe Z13-Zellen,
+- 15.247 grobe Z14-Zellen,
+- 1.386 grobe Z16-Zellen.
+
+Das reduziert die geplante Core-Arbeit von rund **38,06 Milliarden** Zellen
+bei uniform Z16 auf **1,085 Milliarden**, also um Faktor **35,08**.
+
+Die Multi-Resolution-Kopplung ist real an einer direkten
+**Z11-Z16-Küstenkante (32:1)** gegen einen unabhängig expandierten globalen
+Referenzgraphen validiert: 524.288 Vergleichszellen, **0 Unterschiede**.
+
+Ein zusammenhängender 128-Domain-Benchmark mit warmem Mapterhorn-Cache brauchte
+37,52 s bei 183.464 KiB Peak-RSS. Der adaptive Tile-Prefetch reduziert dabei
+24.502 Domain-Tile-Referenzen des Vollplans auf nur **4.615 eindeutige
+Mapterhorn-Tiles**.
+
+Längere adaptive Läufe unterstützen inzwischen Checkpoint/Resume. Der
+Konvergenzzustand besteht nur aus Queue, Randthresholds und Countern; die
+sparse Threshold-Endausgabe kann erst nach vollständiger Konvergenz erzeugt
+werden.
 
 Siehe `docs/candidate-prefilter-and-components.md`.
 
