@@ -258,17 +258,96 @@ der lokalen Fenstergröße wählen. `--max-direct-window-cells` setzt die Grenze
 für größere Fenster werden `--domain-solver`, `--domain-width` und
 `--domain-height` verwendet.
 
+## Source-Fidelity-Pilot
+
+Der vollständige Low-Memory-Pfad wurde anschließend auf einer realen
+Mapterhorn-Work-Region innerhalb der slowenischen Source `si` geprüft.
+
+Die Coverage-Metadaten melden:
+
+- Source: `si` / DMR - digitalni model reliefa,
+- native Auflösung: **1,0 m**,
+- Source-Fidelity-Processing-Zoom: **Z16**,
+- Ground Resolution im Pilot: **0,836 m**.
+
+Pilot-Raster:
+
+- 1.536 x 1.536 Zellen,
+- 2.359.296 Zellen insgesamt,
+- 9 echte Z16-Mapterhorn-Tiles,
+- 0 fehlende DEM-Tiles.
+
+Exakter Z16-Candidate:
+
+- Sea-Zellen: 850.151,
+- Landzellen: 1.509.145,
+- Candidate-Landzellen: 1.497.379,
+- Candidate-Landanteil: 99,2204 %.
+
+Die kleine Pilotregion liegt fast vollständig in einer niedrig gelegenen,
+zusammenhängenden Küstenzone. Deshalb ist der Candidate-Anteil hier bewusst
+kein Maß für die globale Prefilter-Wirkung.
+
+Die exakte Highres-Zerlegung ergab:
+
+- 1 Candidate-Land-Komponente,
+- 1.497.379 Landzellen,
+- Component-Fenster: 1.536 x 1.385 = 2.128.896 Zellen.
+
+Mit einem Direktlimit von 1.000.000 Fensterzellen wurde automatisch der
+Domain-Fallback verwendet:
+
+- 4 Domains,
+- 8 Solver-Läufe insgesamt,
+- maximal 2 Läufe pro Domain,
+- 3.788 verbesserte Randthresholds.
+
+Vergleich mit einem globalen Z16-Priority-Flood auf derselben Region:
+
+- **0 abweichende Candidate-Landzellen**,
+- **0 nicht-Sentinel-Zellen außerhalb Candidate-Land**,
+- damit bytegleich auf allen fachlich relevanten Zellen.
+
+Gemessene Peak-RSS-/Laufzeitwerte:
+
+| Schritt | Peak-RSS | Laufzeit |
+| --- | ---: | ---: |
+| globaler Z16-Referenz-Flood | 18.252 KiB | 0,04 s |
+| exakter Candidate | 9.128 KiB | 0,02 s |
+| Komponentenbildung | 5.104 KiB | 0,02 s |
+| serielle Component-/Domain-Pipeline | 40.336 KiB | 0,52 s |
+
+Damit ist der Pfad
+
+`grobe Work Region -> Source-Fidelity-DEM -> exakter Candidate -> exakte Components -> automatischer Domain-Fallback`
+
+erstmals vollständig mit echter 1-m-Quelldatenauflösung validiert.
+
+### Wichtige Coverage-Erkenntnis
+
+Die `coverage_bounds` einer Mapterhorn-Source reichen nicht aus, um zu
+entscheiden, ob eine Work Region vollständig durch diese Source abgedeckt ist.
+
+Eine MultiPolygon-Coverage kann dieselbe Bounding Box aufspannen und innerhalb
+dieser Box trotzdem Lücken enthalten. Das trat beim ersten Pilotversuch mit
+`si` tatsächlich auf.
+
+Für die Produktionspipeline muss deshalb die **echte Coverage-Geometrie**
+geschnitten bzw. auf vollständige Abdeckung geprüft werden. Bounding Boxes
+dürfen nur zur schnellen Vorauswahl verwendet werden.
+
 ## Nächster Prüfpunkt
 
-Als Nächstes muss die komplette Hierarchie auf einer echten
-**Source-Fidelity-/High-Resolution-Work-Region** geprüft werden:
+Der nächste Schritt ist die Generalisierung vom Pilot auf einen regulären
+Work-Region-Prozessor:
 
-1. konservative grobe Work Region,
-2. nur dafür Highres-DEM materialisieren,
-3. exakten Highres-Candidate bilden,
-4. exakte Highres-Land-Komponenten bestimmen,
-5. kleine Komponenten direkt seriell rechnen,
-6. übergroße Komponenten automatisch per Domain-Fallback rechnen.
+1. grobe Candidate-Work-Region auswählen,
+2. tatsächliche Mapterhorn-Coverage-Geometrien schneiden,
+3. Region bei mehreren Sources in source-homogene Teilregionen zerlegen,
+4. pro Teilregion den echten Source-Fidelity-Zoom verwenden,
+5. Highres-Candidate und Components bilden,
+6. kleine Components direkt, große per Domain-Fallback rechnen,
+7. Thresholds anschließend wieder nahtlos in das Gesamtergebnis einsetzen.
 
-Damit wird erstmals der vollständige Low-Memory-Pfad bei der tatsächlich
-gewünschten Source-Auflösung validiert.
+Damit wird die Source-Auflösung nicht nur in einem Testausschnitt, sondern
+systematisch über unterschiedliche Mapterhorn-Sources hinweg genutzt.
