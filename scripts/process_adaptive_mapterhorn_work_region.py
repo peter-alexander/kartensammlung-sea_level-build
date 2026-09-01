@@ -32,24 +32,36 @@ def process_adaptive_work_region(
 	workers=8,
 	domain_pixels=512,
 	max_solver_runs=1000000,
+	adaptive_plan_path=None,
 ):
 	parent_meta = json.loads(
 		Path(parent_grid).read_text(encoding="utf-8")
 	)
 	parent = parent_meta["grid"]
 
-	plan = adaptive_plan(
-		components_report,
-		spans,
-		parent_grid,
-		component_id,
-		factor=coarse_factor,
-		cache_dir=cache_dir,
-		coverage_zoom=coverage_zoom,
-		coverage_context_tiles=coverage_context_tiles,
-		workers=workers,
-		domain_pixels=domain_pixels,
-	)
+	if adaptive_plan_path is None:
+		plan = adaptive_plan(
+			components_report,
+			spans,
+			parent_grid,
+			component_id,
+			factor=coarse_factor,
+			cache_dir=cache_dir,
+			coverage_zoom=coverage_zoom,
+			coverage_context_tiles=coverage_context_tiles,
+			workers=workers,
+			domain_pixels=domain_pixels,
+		)
+	else:
+		plan = json.loads(
+			Path(adaptive_plan_path).read_text(
+				encoding="utf-8"
+			)
+		)
+		if int(plan["component_id"]) != int(component_id):
+			raise ValueError(
+				"Adaptive Plan gehört zu einer anderen Component."
+			)
 	if not plan["domains"]:
 		raise RuntimeError(
 			"Adaptive Work Region enthält keine Domains."
@@ -142,6 +154,7 @@ def main():
 	)
 	parser.add_argument("--workers", type=int, default=8)
 	parser.add_argument("--domain-pixels", type=int, default=512)
+	parser.add_argument("--adaptive-plan")
 	parser.add_argument(
 		"--max-solver-runs",
 		type=int,
@@ -166,6 +179,7 @@ def main():
 		workers=args.workers,
 		domain_pixels=args.domain_pixels,
 		max_solver_runs=args.max_solver_runs,
+		adaptive_plan_path=args.adaptive_plan,
 	)
 
 	print(json.dumps(result, indent=2))
