@@ -1,0 +1,182 @@
+name: Temporary mixed fidelity DEM pilot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-mixed-fidelity-dem-pilot.yml
+
+permissions:
+  contents: write
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow shapely mapbox-vector-tile
+
+      - name: Plan mixed source work region
+        run: |
+          mkdir -p tmp/mixed-fidelity cache
+
+          python scripts/plan_work_region.py \
+            --bbox=13.874458007812487,45.61749699389712,13.889458007812487,45.62949699389712 \
+            --output-dir tmp/mixed-fidelity/plan \
+            --coverage-zoom 8 \
+            --coverage-context-tiles 1 \
+            --cache-dir cache \
+            --workers 12 \
+            --max-uniform-cells 10000000
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan = json.loads(
+              Path("tmp/mixed-fidelity/plan/plan.json").read_text()
+          )
+          print(json.dumps(plan, indent=2))
+
+          if plan["uniform_processing_zoom"] != 16:
+              raise RuntimeError(
+                  "Gemischter Pilot muss wegen si auf Z16 planen."
+              )
+          if plan["requires_work_region_split"]:
+              raise RuntimeError(
+                  "Kleine Pilotregion darf keinen Work-Region-Split brauchen."
+              )
+
+          effective = {
+              item["source"]: item
+              for item in plan["coverage"]["effective_sources"]
+          }
+          if "si" not in effective:
+              raise RuntimeError("si-Coverage fehlt im gemischten Pilot.")
+          if "tinitaly" not in effective:
+              raise RuntimeError(
+                  "tinitaly-Coverage fehlt im gemischten Pilot."
+              )
+
+          si_fraction = effective["si"]["area_fraction"]
+          tinitaly_fraction = effective["tinitaly"]["area_fraction"]
+          if not (0.2 < si_fraction < 0.8):
+              raise RuntimeError(
+                  f"Unerwarteter si-Flächenanteil: {si_fraction}"
+              )
+          if tinitaly_fraction <= 0.1:
+              raise RuntimeError(
+                  "tinitaly muss einen relevanten Restbereich abdecken."
+              )
+          PY
+
+      - name: Materialize uniform mixed fidelity DEM
+        run: |
+          mkdir -p tmp/mixed-fidelity/dem
+
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+              --config tmp/mixed-fidelity/plan/dem-config.json \
+              --cache-dir cache \
+              --work-dir tmp/mixed-fidelity/dem \
+              --workers 12 \
+            2>&1 | tee tmp/mixed-fidelity/dem.log
+
+      - name: Verify HTTP fallback
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          meta = json.loads(
+              Path("tmp/mixed-fidelity/dem/grid.json").read_text()
+          )
+          dem = meta["dem"]
+
+          parent_zooms = Counter(
+              int(item["parent_zoom"])
+              for item in dem["fallback_tiles"]
+          )
+          report = {
+              "grid": meta["grid"],
+              "requested_missing_tile_count": (
+                  dem["requested_missing_tile_count"]
+              ),
+              "fallback_mode": dem["overzoom_fallback_mode"],
+              "fallback_tile_count": dem["fallback_tile_count"],
+              "fallback_parent_tile_count": (
+                  dem["fallback_parent_tile_count"]
+              ),
+              "fallback_target_parent_zooms": dict(
+                  sorted(parent_zooms.items())
+              ),
+              "missing_tile_count": dem["missing_tile_count"],
+          }
+          Path("tmp/mixed-fidelity/summary.json").write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          print(json.dumps(report, indent=2))
+
+          if dem["overzoom_fallback_mode"] != "http":
+              raise RuntimeError("HTTP-Fallback wurde nicht verwendet.")
+          if dem["requested_missing_tile_count"] <= 0:
+              raise RuntimeError(
+                  "Pilot hat die gemischte Highres-Grenze nicht getroffen."
+              )
+          if dem["fallback_tile_count"] != dem[
+              "requested_missing_tile_count"
+          ]:
+              raise RuntimeError(
+                  "Nicht alle fehlenden Z16-Tiles wurden aufgelöst."
+              )
+          if dem["missing_tile_count"] != 0:
+              raise RuntimeError(
+                  "Nach HTTP-Fallback sind DEM-Tiles ungelöst."
+              )
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixed-fidelity-dem-pilot
+          path: |
+            tmp/mixed-fidelity/plan/plan.json
+            tmp/mixed-fidelity/plan/dem-config.json
+            tmp/mixed-fidelity/plan/effective-sources.geojson
+            tmp/mixed-fidelity/dem/grid.json
+            tmp/mixed-fidelity/dem.log
+            tmp/mixed-fidelity/summary.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-mixed-fidelity-dem-pilot.yml ]; then
+            git rm .github/workflows/tmp-mixed-fidelity-dem-pilot.yml
+            git commit -m "Remove temporary mixed fidelity DEM pilot"
+            git pull --rebase
+            git push
+          fi
