@@ -90,7 +90,6 @@ Der Source-Fidelity-Pfad ist inzwischen ebenfalls als Work-Region-Pipeline
 validiert:
 
 - echte Mapterhorn-Coverage-Geometrien statt bloßer Coverage-Bounding-Boxes,
-- ein gemeinsamer Processing-Zoom pro Work Region,
 - Source-Grenzen bleiben **keine Solver-Grenzen**,
 - gemischte 1-m-/10-m-Coverage wurde auf einem gemeinsamen Z16-Raster
   materialisiert,
@@ -98,6 +97,23 @@ validiert:
   verfügbaren HTTP-Parent-Tile overzoomt werden,
 - grobe RLE-Candidate-Komponenten können als tatsächliche geografische
   Work-Region-Geometrie rekonstruiert werden.
+
+Für sichere grobe Work Regions werden inzwischen zwei Sea-Masken getrennt:
+Sea-Any (OR der Kinder) für den konservativen Candidate-Pass und Pure-Sea
+(AND der Kinder) für die Komponentenzerlegung. Auf der Nordadria-/Alpen-Domain
+ergibt das 87 sichere Faktor-16-Work-Regions; die größte enthält 96,73 % der
+groben Candidate-Landfläche.
+
+Deshalb wird eine große Work Region **nicht mehr vollständig in Highres
+materialisiert**. Der neue lazy Pfad plant nur aktive Fine-Domains, lädt jeweils
+eine Domain aus Mapterhorn, tauscht monotone Randthresholds mit den Nachbarn aus
+und löscht die lokalen DEM-Daten danach wieder.
+
+Ein realer Multi-Domain-Pilot mit 12 aktiven 512-x-512-Domains und 23
+Materialisierungen war auf 401.664 Work-Region-Zellen bytegleich mit einem
+globalen QA-Priority-Flood. Der gemessene Peak-RSS des lazy Laufs lag bei
+227.344 KiB. Dieser Pilot lag auf GLO-30 / Z11; der nächste Prüfpunkt ist
+derselbe Vergleich auf einer echten Z14-Z16-Work-Region.
 
 Siehe `docs/candidate-prefilter-and-components.md`.
 
