@@ -38,6 +38,7 @@ def process_adaptive_work_region(
 	resume=False,
 	max_runs_this_invocation=0,
 	write_outputs_during_convergence=True,
+	seed_plan_path=None,
 ):
 	parent_meta = json.loads(
 		Path(parent_grid).read_text(encoding="utf-8")
@@ -72,6 +73,20 @@ def process_adaptive_work_region(
 			"Adaptive Work Region enthält keine Domains."
 		)
 
+	initial_domain_ids = None
+	if seed_plan_path is not None:
+		seed_plan = json.loads(
+			Path(seed_plan_path).read_text(
+				encoding="utf-8"
+			)
+		)
+		initial_domain_ids = [
+			int(value)
+			for value in seed_plan[
+				"initial_domain_ids"
+			]
+		]
+
 	output_dir = Path(output_dir)
 	output_dir.mkdir(parents=True, exist_ok=True)
 	threshold_dir = output_dir / "threshold-domains"
@@ -103,6 +118,7 @@ def process_adaptive_work_region(
 			write_outputs_during_convergence=(
 				write_outputs_during_convergence
 			),
+			initial_domain_ids=initial_domain_ids,
 		)
 	finally:
 		materializer.close()
@@ -124,6 +140,11 @@ def process_adaptive_work_region(
 			"boundary convergence -> sparse thresholds"
 		),
 		"component_id": int(component_id),
+		"seed_plan": (
+			str(seed_plan_path)
+			if seed_plan_path is not None
+			else None
+		),
 		"domain_plan": plan,
 		"solver": solver_report,
 		"output": {
@@ -169,6 +190,7 @@ def main():
 	parser.add_argument("--workers", type=int, default=8)
 	parser.add_argument("--domain-pixels", type=int, default=512)
 	parser.add_argument("--adaptive-plan")
+	parser.add_argument("--seed-plan")
 	parser.add_argument("--checkpoint")
 	parser.add_argument(
 		"--checkpoint-every-runs",
@@ -221,6 +243,7 @@ def main():
 		write_outputs_during_convergence=(
 			not args.final_output_after_convergence
 		),
+		seed_plan_path=args.seed_plan,
 	)
 
 	print(json.dumps(result, indent=2))
