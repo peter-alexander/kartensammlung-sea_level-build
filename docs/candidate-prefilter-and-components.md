@@ -133,6 +133,22 @@ gebildet und erneut in Land-Komponenten zerlegt.
 
 Erst diese exakten Land-Komponenten sind fachlich unabhängige Solver-Einheiten.
 
+### Exakte Z11-Komponenten
+
+Der exakte Nordadria-/Alpen-Lauf bestätigt, dass die erneute Zerlegung fachlich
+notwendig ist, aber große Niederungen trotzdem zusammenhängend bleiben können:
+
+- 1.071 exakte Candidate-Land-Komponenten,
+- größte Komponente: 33.636.701 Zellen,
+- Anteil der größten Komponente an allen Candidate-Landzellen: **95,31 %**,
+- lokales Bounding-Box-Fenster mit 1-Zellen-Halo:
+  11.238 x 8.569 = 96.298.422 Zellen,
+- Component-Füllgrad im lokalen Fenster: 34,93 %.
+
+Für die RAM-Entscheidung ist deshalb nicht nur die Zahl echter
+Component-Zellen relevant, sondern vor allem die Größe des lokalen
+Materialisierungsfensters.
+
 ## Serielle Component-Pipeline
 
 Geplanter regulärer Pfad:
@@ -203,15 +219,56 @@ bilden.
 
 Daher gilt:
 
-- passt die exakte Komponente in das RAM-Budget: direkt seriell rechnen,
-- passt sie nicht: **nur diese eine Komponente** in numerische Domains teilen
+- passt das lokale Component-Fenster in das RAM-Budget: direkt seriell rechnen,
+- passt es nicht: **nur diese eine Komponente** in numerische Domains teilen
   und mit ausgetauschten Randthresholds bis zur Konvergenz rechnen.
 
-Das Domain-Splitting ist damit kein globaler Standardfall mehr, sondern ein
-Fallback für einzelne übergroße Komponenten.
+Der Domain-Solver ist implementiert in:
 
-## Aktueller Prüfpunkt
+`scripts/process_component_domains.py`
 
-Noch ausstehend ist die Größenverteilung der **exakten** Z11-Land-Komponenten
-auf der Nordadria-/Alpen-Domain. Dieser Benchmark entscheidet, ab welcher
-Component-Größe der Domain-Fallback praktisch benötigt wird.
+Er verwendet monotone Randthresholds. Wird für eine Nachbardomain später ein
+niedrigerer Randwert gefunden, wird diese Domain erneut gerechnet. Die
+Iteration endet, sobald sich kein Randwert mehr verbessert.
+
+### Realbenchmark des Domain-Fallbacks
+
+Die größte exakte Nordadria-/Alpen-Z11-Komponente wurde einmal direkt und
+einmal in 2.048 x 2.048 Domains gerechnet.
+
+Ergebnis:
+
+- Component-Landzellen: 33.636.701,
+- lokales Fenster: 96.298.422 Zellen,
+- 22 tatsächlich belegte Domains,
+- 55 Solver-Läufe insgesamt,
+- maximal 5 Läufe für eine einzelne Domain,
+- 65.837 verbesserte Randwerte,
+- direkter Solver: 249.000 KiB Peak-RSS, 1,32 s,
+- Domain-Solver: 81.928 KiB Peak-RSS, 6,68 s,
+- **0 abweichende Zellen**,
+- maximale Threshold-Klassenabweichung: **0**.
+
+Der Domain-Fallback reduziert den gemessenen Peak-RSS damit um rund **67 %**,
+ist in diesem Test aber ungefähr fünfmal langsamer. Das ist akzeptabel, weil er
+nur für einzelne übergroße Komponenten verwendet wird.
+
+`scripts/process_candidate_components.py` kann den Fallback automatisch anhand
+der lokalen Fenstergröße wählen. `--max-direct-window-cells` setzt die Grenze;
+für größere Fenster werden `--domain-solver`, `--domain-width` und
+`--domain-height` verwendet.
+
+## Nächster Prüfpunkt
+
+Als Nächstes muss die komplette Hierarchie auf einer echten
+**Source-Fidelity-/High-Resolution-Work-Region** geprüft werden:
+
+1. konservative grobe Work Region,
+2. nur dafür Highres-DEM materialisieren,
+3. exakten Highres-Candidate bilden,
+4. exakte Highres-Land-Komponenten bestimmen,
+5. kleine Komponenten direkt seriell rechnen,
+6. übergroße Komponenten automatisch per Domain-Fallback rechnen.
+
+Damit wird erstmals der vollständige Low-Memory-Pfad bei der tatsächlich
+gewünschten Source-Auflösung validiert.
