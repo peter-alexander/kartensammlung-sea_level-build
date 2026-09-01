@@ -1,0 +1,247 @@
+name: Temporary candidate land component benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-land-components-alps.yml
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow rasterio
+
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin unzip
+
+      - name: Build tools
+        run: |
+          mkdir -p build tmp/land-components cache
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic             src/candidate_mask_70.cpp             -o build/candidate_mask_70
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic             src/candidate_land_components.cpp             -o build/candidate_land_components
+
+      - name: Prepare streamed DEM
+        run: |
+          python scripts/prepare_phase1a_dem.py             --config config/candidate_benchmark_north_adriatic_alps_z11.json             --cache-dir cache             --work-dir tmp/land-components             --workers 12
+
+      - name: Prepare ocean mask
+        run: |
+          mkdir -p tmp/ocean-source
+
+          curl -fL --retry 3 --retry-delay 5             -o cache/water-polygons-split-3857.zip             https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip             '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg'             -d tmp/ocean-source
+
+          eval "$(
+            python - tmp/land-components/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          g = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          for key in ("left", "bottom", "right", "top", "width", "height"):
+              print(f"GRID_{key.upper()}={shlex.quote(str(g[key]))}")
+          PY
+          )"
+
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          ogr2ogr             -f GPKG             tmp/land-components/ocean_clip.gpkg             "$SHP"             -spat "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"             -spat_srs EPSG:3857
+
+          gdal_rasterize             -burn 1             -init 0             -ot Byte             -te "$GRID_LEFT" "$GRID_BOTTOM" "$GRID_RIGHT" "$GRID_TOP"             -ts "$GRID_WIDTH" "$GRID_HEIGHT"             -co COMPRESS=DEFLATE             -co TILED=YES             tmp/land-components/ocean_clip.gpkg             tmp/land-components/ocean_mask.tif
+
+          python scripts/write_ocean_mask_raw.py             --grid tmp/land-components/grid.json             --input tmp/land-components/ocean_mask.tif             --output tmp/land-components/sea_mask.u8
+
+      - name: Build conservative factor 16 raster
+        run: |
+          eval "$(
+            python - tmp/land-components/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          g = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"GRID_WIDTH={shlex.quote(str(g['width']))}")
+          print(f"GRID_HEIGHT={shlex.quote(str(g['height']))}")
+          PY
+          )"
+
+          python scripts/build_conservative_candidate_coarse.py             --elevation tmp/land-components/elevation.f32             --sea-mask tmp/land-components/sea_mask.u8             --output-elevation tmp/land-components/coarse.f32             --output-sea-mask tmp/land-components/coarse-sea.u8             --report tmp/land-components/coarse-report.json             --width "$GRID_WIDTH"             --height "$GRID_HEIGHT"             --factor 16
+
+      - name: Build coarse candidate mask
+        run: |
+          eval "$(
+            python - tmp/land-components/coarse-report.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          r = json.loads(Path(sys.argv[1]).read_text())
+          print(f"COARSE_WIDTH={shlex.quote(str(r['coarse_width']))}")
+          print(f"COARSE_HEIGHT={shlex.quote(str(r['coarse_height']))}")
+          PY
+          )"
+
+          build/candidate_mask_70             --elevation tmp/land-components/coarse.f32             --sea-mask tmp/land-components/coarse-sea.u8             --output tmp/land-components/coarse-candidate.bit             --report tmp/land-components/coarse-candidate.json             --width "$COARSE_WIDTH"             --height "$COARSE_HEIGHT"             --max-level 70
+
+      - name: Analyze independent land components
+        run: |
+          eval "$(
+            python - tmp/land-components/coarse-report.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          r = json.loads(Path(sys.argv[1]).read_text())
+          print(f"COARSE_WIDTH={shlex.quote(str(r['coarse_width']))}")
+          print(f"COARSE_HEIGHT={shlex.quote(str(r['coarse_height']))}")
+          PY
+          )"
+
+          /usr/bin/time -v             build/candidate_land_components             --candidate-mask tmp/land-components/coarse-candidate.bit             --sea-mask tmp/land-components/coarse-sea.u8             --report tmp/land-components/components.json             --width "$COARSE_WIDTH"             --height "$COARSE_HEIGHT"             2>&1 | tee tmp/land-components/components.log
+
+      - name: Summarize component sizes
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path("tmp/land-components")
+          report = json.loads(
+              (root / "components.json").read_text()
+          )
+          cells = [
+              int(component["cells"])
+              for component in report["components"]
+          ]
+          total = int(report["land_candidate_cells"])
+
+          thresholds = [
+              1,
+              10,
+              100,
+              1000,
+              10000,
+              100000,
+          ]
+          counts_ge = {
+              str(limit): sum(
+                  cell_count >= limit
+                  for cell_count in cells
+              )
+              for limit in thresholds
+          }
+
+          top = report["components"][:20]
+
+          log = (root / "components.log").read_text()
+          peak = re.search(
+              r"Maximum resident set size \(kbytes\):\s*(\d+)",
+              log,
+          )
+          elapsed = re.search(
+              r"Elapsed \(wall clock\) time \(h:mm:ss or m:ss\):\s*([^\n]+)",
+              log,
+          )
+
+          cumulative = []
+          running = 0
+          for rank, component in enumerate(
+              report["components"],
+              start=1,
+          ):
+              running += int(component["cells"])
+              if rank in (1, 2, 5, 10, 20, 50, 100):
+                  cumulative.append({
+                      "top_n": rank,
+                      "cells": running,
+                      "pct": (
+                          running * 100.0 / total
+                          if total
+                          else 0.0
+                      ),
+                  })
+
+          summary = {
+              "component_count": report["component_count"],
+              "land_candidate_cells": total,
+              "largest_component_cells": report[
+                  "largest_component_cells"
+              ],
+              "largest_component_pct_of_land_candidates": report[
+                  "largest_component_pct_of_land_candidates"
+              ],
+              "components_ge_cells": counts_ge,
+              "cumulative_top_components": cumulative,
+              "top_20": top,
+              "component_analyzer_peak_rss_kb": (
+                  int(peak.group(1))
+                  if peak
+                  else None
+              ),
+              "component_analyzer_elapsed": (
+                  elapsed.group(1).strip()
+                  if elapsed
+                  else None
+              ),
+          }
+
+          (root / "component-summary.json").write_text(
+              json.dumps(summary, indent=2) + "\n"
+          )
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-land-components-alps
+          path: |
+            tmp/land-components/coarse-report.json
+            tmp/land-components/coarse-candidate.json
+            tmp/land-components/components.json
+            tmp/land-components/component-summary.json
+            tmp/land-components/components.log
+          retention-days: 14
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email             "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-land-components-alps.yml ]; then
+            git rm .github/workflows/tmp-land-components-alps.yml
+            git commit -m "Remove temporary land component benchmark workflow"
+            git pull --rebase
+            git push
+          fi
