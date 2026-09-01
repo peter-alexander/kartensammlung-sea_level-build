@@ -86,6 +86,19 @@ Randbedingung. Einzelne exakte Land-Komponenten können dadurch seriell
 gerechnet und danach aus dem RAM entfernt werden. Übergroße Einzelkomponenten
 erhalten als Fallback eine interne Domain-Zerlegung.
 
+Der Source-Fidelity-Pfad ist inzwischen ebenfalls als Work-Region-Pipeline
+validiert:
+
+- echte Mapterhorn-Coverage-Geometrien statt bloßer Coverage-Bounding-Boxes,
+- ein gemeinsamer Processing-Zoom pro Work Region,
+- Source-Grenzen bleiben **keine Solver-Grenzen**,
+- gemischte 1-m-/10-m-Coverage wurde auf einem gemeinsamen Z16-Raster
+  materialisiert,
+- fehlende High-Zoom-ZXY-Tiles können automatisch aus der nächstfeineren
+  verfügbaren HTTP-Parent-Tile overzoomt werden,
+- grobe RLE-Candidate-Komponenten können als tatsächliche geografische
+  Work-Region-Geometrie rekonstruiert werden.
+
 Siehe `docs/candidate-prefilter-and-components.md`.
 
 ## Struktur
