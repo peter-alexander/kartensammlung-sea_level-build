@@ -15,11 +15,21 @@ def validate_final_output(plan, report, output_dir, checkpoint_path):
 	output_dir = Path(output_dir)
 	threshold_dir = output_dir / "threshold-domains"
 
+	normalized_domains = [
+		{
+			**domain,
+			"id": int(domain.get("id", index)),
+		}
+		for index, domain in enumerate(
+			plan["domains"],
+			start=1,
+		)
+	]
 	expected = {
 		f"r{int(domain['id'])}-c{int(domain['zoom'])}.u8": int(
 			domain["fine_cells"]
 		)
-		for domain in plan["domains"]
+		for domain in normalized_domains
 	}
 	actual = {
 		path.name: path.stat().st_size
@@ -73,7 +83,7 @@ def validate_final_output(plan, report, output_dir, checkpoint_path):
 
 	expected_cells = sum(
 		int(domain["fine_cells"])
-		for domain in plan["domains"]
+		for domain in normalized_domains
 	)
 
 	if not summary["completed"]:
