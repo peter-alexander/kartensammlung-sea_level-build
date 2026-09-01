@@ -1,244 +1,192 @@
 # Produktionsauflösung und DEM-Strategie
 
-Stand: 31. August 2026
+Stand: 1. September 2026
 
-## Entscheidung in Kurzform
+## Grundentscheidung
 
-Für die Meeresspiegel-Simulation wird **nicht automatisch die höchste verfügbare
-DEM-Auflösung verarbeitet**. Der Processing-Zoom folgt aber der tatsächlichen
-Mapterhorn-Source-Auflösung.
+Fachliche Auflösung und technische Skalierung werden getrennt behandelt.
 
-Aktuelles Modell:
+Eine DEM-Source soll mindestens auf einer Processing-Auflösung gerechnet werden,
+deren Bodenpixel nicht gröber als die native Source-Auflösung sind. RAM- oder
+Disk-Grenzen sollen nicht dadurch gelöst werden, gute Quellen künstlich gröber
+zu rechnen.
 
-1. globale/regionale Basis ungefähr in nativer globaler DEM-Auflösung,
-2. automatische Küsten-Refinements mit
-   `target = max(native_source_resolution, 6 m)`,
-3. zusätzliche QA-Stufe für Sources <=2 m mit
-   `target = max(native_source_resolution, 3 m)`.
+Der Coverage Planner unterscheidet deshalb ab Schema V4:
 
-Für AHN5 5 m bedeutet das bei ungefähr 52° N automatisch **Z13 / ~5,9 m**.
+- die derzeit ausführbare Empfehlung,
+- den Source-Fidelity-Zoom.
 
-## Warum die frühere Z12-Regel verworfen wurde
+Der Source-Fidelity-Zoom ist die erste Web-Mercator-Stufe, deren Bodenpixel
+kleiner oder gleich der nativen Source-Auflösung sind.
 
-Der historische V1-Benchmark verwendete 1-m-Thresholdklassen und ließ Z12
-gegenüber Z13 beinahe identisch erscheinen.
+Für AHN5 5 m bei ungefähr 52 Grad Nord gilt:
 
-Mit V2 werden zwischen 2 und 5 m jedoch 0,25-m-Stufen gespeichert. Dadurch wird
-ein zuvor verdeckter topologischer Unterschied sichtbar:
+- Z13: etwa 5,883 m Bodenpixel, knapp zu grob,
+- Z14: etwa 2,941 m Bodenpixel, Source-Fidelity.
 
-- Z11 öffnet die kritische Verbindung bei 3,5 m,
-- Z12 bei 3,75 m,
-- Z13 bei 4,0 m.
+Der veröffentlichte uniforme Z13-Pilot bleibt als Architektur- und QA-Nachweis
+erhalten, ist aber nicht mehr die finale Auflösungsentscheidung.
 
-Bei 3,75 m weichen **44,300326 %** der Z12-Zellen gegenüber Z13 im sichtbaren
-Überflutungszustand ab. Ursache ist ein Schwelleneffekt an einer hydraulisch
-entscheidenden Barriere: Eine geringe Thresholdverschiebung schaltet eine große
-zusammenhängende Polderfläche um.
+## Z12 gegen Z13
 
-Damit wäre es widersprüchlich, 0,25-m-Sliderstufen anzubieten, eine native
-5-m-Quelle aber vorher auf ~11,8-m-Bodenpixel zu vergröbern.
+Der frühere V2-Benchmark zeigte bei 3,75 m eine maximale
+Sliderzustandsabweichung von 44,300326 %. Damit wurde Z12 für AHN5 verworfen.
 
-## Datenquellen
+## Z13 gegen Z14
 
-### Mapterhorn
+Gleiche Hoek-/Rotterdam-Bounding-Box, gleiches V2-Schema, gleiche Ocean-Maske
+und 4er-Nachbarschaft:
 
-Mapterhorn bleibt die bevorzugte Aggregationsquelle:
-
-- globale Basis ungefähr 30 m,
-- zahlreiche regionale hochauflösende DTM-Quellen,
-- einheitliches Terrarium-Format,
-- Source-Coverage und Attribution maschinenlesbar.
-
-Für die westlichen Niederlande meldet der reale Planner aktuell:
-
-- Source: `nlahn5lowresfilled`,
-- Actueel Hoogtebestand Nederland, AHN5 5m,
-- native Auflösung: 5 m,
-- CC BY 4.0,
-- automatisches Ziel: 6 m,
-- Processing-Zoom: Z13,
-- resultierende Bodenauflösung: 5,973 m.
-
-### Direkte nationale Quellen
-
-Direkte nationale DTMs bleiben für Referenz- und Qualitätsvergleiche relevant.
-Sie sind aber nicht erforderlich, solange Mapterhorn die benötigte Source in
-geeigneter Auflösung aggregiert bereitstellt.
-
-## V2-Auflösungsbenchmark
-
-### Gebiet
-
-Hoek van Holland / Rotterdam / Westland / Delft / südliches Den Haag.
-
-Die Bounding Box ist für Z11, Z12 und Z13 exakt hierarchisch ausgerichtet.
-
-### Rastergrößen
-
-| Stufe | Bodenauflösung ungefähr | Zellen |
-| ---: | ---: | ---: |
-| Z11 | 23,531 m | 3.145.728 |
-| Z12 | 11,765 m | 12.582.912 |
-| Z13 | 5,883 m | 50.331.648 |
-
-Z13 liegt damit ungefähr in der Größenordnung der nativen AHN5-5-m-Quelle.
-
-### Punktwerte
-
-Alle sechs Stichpunkte liefern:
-
-| Processing | Threshold |
-| ---: | ---: |
-| Z11 | 3,5 m |
-| Z12 | 3,75 m |
-| Z13 | 4,0 m |
-
-### Sliderzustand gegenüber Z13
-
-Die wichtigste Metrik prüft für jede der 58 V2-Stufen direkt:
-
-`(coarse_threshold <= slider) != (z13_threshold <= slider)`
-
-Maxima:
-
-- Z11 vs. Z13: **48,466078 % bei 3,5 m**,
-- Z12 vs. Z13: **44,300326 % bei 3,75 m**.
-
-Ausgewählte Z12-Werte:
-
-| Pegel | unterschiedliche Zellen |
-| ---: | ---: |
-| 0 m | 0,031813 % |
-| 0,5 m | 0,028348 % |
-| 1 m | 0,025662 % |
-| 1,7 m | 0,332133 % |
-| 2 m | 0,047437 % |
-| 2,5 m | 0,052174 % |
-| 3 m | 0,075889 % |
-| 3,25 m | 4,398163 % |
-| 3,5 m | 4,414606 % |
-| **3,75 m** | **44,300326 %** |
-| 4 m | 0,222421 % |
-| 5 m | 0,613157 % |
-| 10 m | 0,093357 % |
-| 20 m | 0,013733 % |
-| 70 m | 0 % |
-
-### Thresholdwerte zellweise
-
-Z11 gegen Z13:
-
-- mittlere absolute Differenz: 0,348 m,
-- Median: 0,5 m,
-- >1 m: 4,7317 %,
-- >2 m: 0,1774 %.
-
-Z12 gegen Z13:
-
-- mittlere absolute Differenz: 0,1551 m,
-- Median: 0,25 m,
-- >1 m: 0,1731 %,
-- >2 m: 0,0295 %.
-
-Die kleine mittlere Z12-Differenz zeigt, warum eine reine RMSE-/MAE-Betrachtung
-hier nicht genügt: Eine einzelne topologisch kritische Barriere kann trotz
-kleiner lokaler Höhenabweichung eine sehr große Fläche umschalten.
-
-## Rechenkosten des Benchmarks
-
-| Stufe | DEM Peak-RAM | Flood Peak-RAM | Flood-Zeit |
+| Stufe | Raster | Zellen | Bodenpixel |
 | ---: | ---: | ---: | ---: |
-| Z11 | ~78 MiB | ~36 MiB | 0,13 s |
-| Z12 | ~116 MiB | ~130 MiB | 0,45 s |
-| Z13 | ~260 MiB | ~452 MiB | 1,66 s |
+| Z13 | 6.144 x 8.192 | 50.331.648 | ~5,883 m |
+| Z14 | 12.288 x 16.384 | 201.326.592 | ~2,941 m |
 
-Der Priority-Flood-Kern selbst bleibt effizient. Für große Regionen sind vor
-allem Zellzahl, DEM-Download/I/O und Zwischenraster die Skalierungsfaktoren.
+Sample-Thresholds:
 
-## Produktionsregeln
+| Ort | Z13 | Z14 |
+| --- | ---: | ---: |
+| Hoek van Holland | 4,0 m | 3,75 m |
+| Maassluis | 4,0 m | 4,0 m |
+| Rotterdam Zentrum | 4,0 m | 3,75 m |
+| Westland-Polder | 4,0 m | 3,75 m |
+| Delft | 4,0 m | 3,75 m |
+| Den Haag Süd | 4,0 m | 3,75 m |
 
-### Tier 1 – Base
+Vergleich:
 
-Globale ~30-m-Quelle.
+- mittlere absolute Thresholddifferenz: 0,1242 m,
+- Median: 0 m,
+- >1 m Unterschied: 0,0316 %,
+- >2 m: 0,0114 %,
+- >5 m: 0,0001 %,
+- maximale Sliderzustandsabweichung:
+  **44,268125 % bei 3,75 m**.
 
-Zielbereich:
+Der große Flächeneffekt entsteht trotz kleiner mittlerer Differenz durch eine
+kritische topologische Verbindung.
 
-**ungefähr 25–40 m Bodenpixel**
+Bei 3,75 m sind überflutet:
 
-Der Zoom wird aus Zielauflösung und Breitenlage berechnet.
+- Z13: 46,0778574 %,
+- Z14: 90,1996230 %.
 
-### Tier 2 – automatisch
+Z13 ist damit für AHN5 nicht als konvergiert nachgewiesen.
 
-Für Sources mit nativer Auflösung <=10 m:
+## Z15-Kontrollversuch
 
-`target_ground_resolution = max(native_source_resolution, 6 m)`
+Für dieselbe Bounding Box wurden 3.072 Z15-Tiles angefordert. Der getestete
+Mapterhorn-ZXY-Endpunkt lieferte für alle 3.072 Tiles 404. Der Versuch wurde vor
+dem Flood abgebrochen, weil fehlendes DEM auch auf Land lag.
 
-Beispiele bei 52° N:
+Z14 war im vorherigen Lauf vollständig vorhanden.
 
-- 10-m-Source → Z12 / ~11,8 m,
-- 5-m-Source → Z13 / ~5,9 m,
-- 1-m-Source → ebenfalls Z13 / ~5,9 m.
+Der Befund gilt nur für diesen Endpoint, dieses Testgebiet und diesen Zeitpunkt.
+Er beweist keinen allgemeinen Maxzoom für alle Mapterhorn- oder
+Niederlande-Sources.
 
-Damit nutzt die Pipeline gute Daten, ohne 0,5–1-m-Sources automatisch in
-entsprechend extreme Arbeitsraster zu übernehmen.
+Für die aktuell getestete AHN5-Pipeline ist Z14 jedoch sowohl die
+Source-Fidelity-Stufe als auch die feinste erfolgreich getestete direkt
+verfügbare Stufe.
 
-### Tier 3 – QA
+## Rechenkosten Z13 gegen Z14
 
-Für Sources <=2 m:
+| Stufe | DEM Peak-RSS | Candidate Peak-RSS | Flood Peak-RSS | Flood-Zeit |
+| ---: | ---: | ---: | ---: | ---: |
+| Z13 | ~269 MB | ~21 MB | ~282 MB | ~1,01 s |
+| Z14 | ~859 MB | ~58 MB | ~1.118 MB | ~4,24 s |
 
-`target_ground_resolution = max(native_source_resolution, 3 m)`
+Die vierfache Zellzahl pro Zoomstufe ist deutlich sichtbar. Der eigentliche
+Priority-Flood-Kern bleibt auf der Benchmarkfläche sehr schnell.
 
-Bei 52° N liegt das typischerweise bei Z14 / ~2,9 m.
+## Exakter 70-m-Candidate-Pass
 
-Tier 3 bleibt eine QA-/Sonderstufe. Sie wird nur verwendet, wenn ein regionaler
-Vergleich nachweist, dass die automatische ~6-m-Stufe schmale hydraulische
-Strukturen relevant verliert.
+Vor dem 58-Klassen-Solver kann eine exakte binäre Connectivity berechnet werden:
 
-## Hierarchische Refinements
+Meer -> zusammenhängende Zellen mit Höhe kleiner oder gleich 70 m.
 
-Die Parent-Boundary-Pipeline bleibt unverändert grundsätzlich gültig:
+Nur diese Zellen können in unserem V2-Schema jemals eine reguläre Klasse
+0-70 m erhalten.
 
-`fine_boundary_threshold = coarse_global_threshold`
+Der neue Candidate-Pass arbeitet bitgepackt und ist als
+src/candidate_mask_70.cpp implementiert.
 
-Ein Fine-Refinement darf damit auch ohne eigenen direkten Meerzugang seine
-Konnektivität aus dem gröberen Parent erben.
+Auf der niederländischen Benchmarkfläche:
 
-Die bestehende Phase-1C-Pipeline hat dieses Prinzip bereits erfolgreich für
-Z11→Z12 nachgewiesen.
+- Z13 Candidate-Anteil: 100 %,
+- Z14 Candidate-Anteil: 100 %.
 
-## Konsequenz für Collar und Halo
+Das ist der erwartete Lowland-Worst-Case. Der Pass spart dort keine Solverzellen,
+ist aber sehr billig:
 
-Mit source-abhängigen Zooms dürfen Transition Collar und Priority-Flood-Halo
-nicht mehr ausschließlich als konstante Fine-Pixel bzw. Fine-Tiles verstanden
-werden.
+- Z13 ungefähr 0,39 s / 21 MB Peak-RSS,
+- Z14 ungefähr 1,47 s / 58 MB Peak-RSS.
 
-Historisch:
+In reliefreichen Küstenregionen soll derselbe Pass Gebirge und abgeschlossene
+Hochlandbereiche entfernen.
 
-- Transition Collar: 128 Pixel bei Z12,
-- Halo: 1 Tile = 512 Pixel bei Z12.
+## Konservativer grober Vorfilter
 
-Bei Z13 wären dieselben Zahlen physisch nur halb so breit.
+Ein normal heruntergerechnetes DEM ist als Ausschlussmaske nicht sicher.
+Mittelwert oder Interpolation könnte einen schmalen realen Korridor unter 70 m
+nach oben glätten.
 
-Bevor der westliche Niederlande-Composite auf Z13 neu gerechnet wird, werden
-diese Parameter deshalb so umgestellt, dass die getestete physische Breite
-erhalten bleibt. Erst danach ist ein Z12-vs.-Z13-Compositevergleich fair.
+Ein sicherer grober Filter muss konservativ sein:
 
-## Auswirkungen auf größere Regionen
+- Grobzellenhöhe = Minimum aller feinen Kindzellen,
+- grobe Sea-Maske = logisches OR aller Kindzellen.
 
-Die endgültige Pipeline soll nicht „Land X = Zoom Y“ verwenden.
+Damit sind False Positives erlaubt, aber keine False Negatives gegenüber dem
+feinen 70-m-Korridor.
 
-Stattdessen:
+Zielpipeline:
 
-`Mapterhorn Coverage → Source-Auflösung → Ziel-Bodenauflösung → Processing-Zoom`
+konservative Min-Pyramide -> grobe Candidate-Maske ->
+exakte Highres-Candidate-Maske -> V2-Priority-Flood.
 
-Benachbarte Sources ähnlicher Qualitätsklasse können anschließend zu
-zusammenhängenden Refinement-Flächen vereinigt werden, um unnötigen
-Grenzflickenteppich zu vermeiden.
+## Skalierung bei hohem Candidate-Anteil
+
+Die Niederlande zeigen den zweiten notwendigen Fall: Bei nahezu 100 %
+Candidate-Anteil hilft räumliches Pruning nicht.
+
+Ein kompletter westlicher-Niederlande-Z14-Domain hätte ungefähr viermal so viele
+Zellen wie der validierte Z13-Lauf und überschreitet die aktuelle monolithische
+32-Bit-Zellindexgrenze des Solverkerns.
+
+Dafür soll die Domain-Zerlegung iterativ werden:
+
+1. gemeinsames hochauflösendes Graphmodell in Domains teilen,
+2. Randthresholds zwischen Nachbardomains austauschen,
+3. verbesserte Randwerte monoton weiterreichen,
+4. Domains erneut lösen, solange sich Randthresholds verbessern,
+5. erst nach Konvergenz die Ausgabe zusammensetzen.
+
+Anders als beim alten einmaligen Threshold-Merge sollen Domain-Grenzen nach
+Konvergenz keine fachliche Naht erzeugen.
+
+## Aktueller Planner-Übergang
+
+Bis die Z14-Skalierung fertig ist, wird der bestehende Produktionspfad nicht
+automatisch auf Source-Fidelity umgestellt.
+
+Bei ungefähr 52 Grad Nord:
+
+| native Source | derzeit ausführbar | Source-Fidelity |
+| ---: | ---: | ---: |
+| 10 m | Z12 | Z13 |
+| 5 m | Z13 | Z14 |
+| 2 m | Z14 QA | Z15 |
+| 1 m | Z13 / Z14 QA | Z16 |
+| 0,5 m | Z13 / Z14 QA | Z17 |
+| 0,25 m | Z13 / Z14 QA | Z18 |
+
+Die linke Spalte ist ein technischer Übergangszustand, nicht das fachliche Ziel.
 
 ## Nächste Schritte
 
-1. Collar/Halo zoomunabhängig bzw. physisch definieren.
-2. Westliche Niederlande mit Planner-Z13 neu rechnen.
-3. V2-Seam-QA und visuellen Vergleich Z12↔Z13 durchführen.
-4. Danach die Source-basierte Regel auf eine größere Nordsee-/Europa-Region
-   anwenden.
+1. Candidate-Pruning in einer reliefreichen Küstenregion messen.
+2. konservative Min-Elevation-Pyramide implementieren und gegen die exakte
+   Candidate-Maske auf False Negatives testen.
+3. kompakten Candidate-Solver für niedrige Candidate-Anteile prototypisieren.
+4. iterativen Domain-Solver für Lowland-Worst-Cases prototypisieren.
+5. erst danach den kompletten westlichen Niederlande-Pilot auf Z14 bauen.

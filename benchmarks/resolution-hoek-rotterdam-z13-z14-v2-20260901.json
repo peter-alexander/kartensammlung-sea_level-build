@@ -1,0 +1,92 @@
+{
+	"benchmark": "resolution-hoek-rotterdam-z13-z14-v2",
+	"date": "2026-09-01",
+	"source_run_id": 33505540007,
+	"source_commit": "058cc2dea09f28d68bdaa48cad1d6a0997bb5080",
+	"threshold_scheme": "piecewise-v2",
+	"bounds": [
+		3.8671875,
+		51.83577752045249,
+		4.5703125,
+		52.16045455774704
+	],
+	"runs": {
+		"z13": {
+			"shape": [
+				6144,
+				8192
+			],
+			"cells": 50331648,
+			"ground_pixel_m_approx": 5.883,
+			"dem_peak_rss_kb": 269272,
+			"candidate_wall_time_s": 0.39,
+			"candidate_peak_rss_kb": 20820,
+			"candidate_pct": 100,
+			"flood_wall_time_s": 1.01,
+			"flood_peak_rss_kb": 282356
+		},
+		"z14": {
+			"shape": [
+				12288,
+				16384
+			],
+			"cells": 201326592,
+			"ground_pixel_m_approx": 2.941,
+			"dem_peak_rss_kb": 858924,
+			"candidate_wall_time_s": 1.47,
+			"candidate_peak_rss_kb": 57688,
+			"candidate_pct": 100,
+			"flood_wall_time_s": 4.24,
+			"flood_peak_rss_kb": 1117916
+		}
+	},
+	"comparison": {
+		"mean_abs_diff_m": 0.1242,
+		"median_abs_diff_m": 0,
+		"pct_diff_gt_1m": 0.0316,
+		"pct_diff_gt_2m": 0.0114,
+		"pct_diff_gt_5m": 0.0001,
+		"max_slider_state_disagreement": {
+			"level_m": 3.75,
+			"pct": 44.268125
+		},
+		"selected_slider_state_disagreement_pct": {
+			"0": 0.018722,
+			"1": 0.012887,
+			"2": 0.052039,
+			"3": 0.023683,
+			"4": 0.111075,
+			"5": 0.519824,
+			"10": 0.043609,
+			"20": 0.00752,
+			"70": 0,
+			"0.5": 0.015402,
+			"3.25": 0.054636,
+			"3.5": 0.062364,
+			"3.75": 44.268125,
+			"4.5": 0.109893,
+			"4.75": 0.103746
+		},
+		"flooded_fraction_at_3_75": {
+			"z13": 0.460778574,
+			"z14": 0.90199623
+		}
+	},
+	"z15_probe": {
+		"source_run_id": 33506028136,
+		"grid_shape": [
+			24576,
+			32768
+		],
+		"cells": 805306368,
+		"requested_tiles": 3072,
+		"missing_tiles": 3072,
+		"result": "All tested Z15 ZXY requests returned missing; no flood comparison was run."
+	},
+	"decision": {
+		"ahn5_source_resolution_m": 5,
+		"source_fidelity_zoom_at_52n": 14,
+		"legacy_executable_zoom_at_52n": 13,
+		"auto_switch_to_fidelity_deferred_until_scaling_ready": true
+	}
+}
