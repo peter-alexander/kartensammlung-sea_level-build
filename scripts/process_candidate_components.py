@@ -181,7 +181,7 @@ def solve_split(
 		str(domain_max_solver_runs),
 		"--report",
 		str(report_path),
-	], check=True)
+	], check=True, stdout=subprocess.DEVNULL)
 
 	return json.loads(report_path.read_text())
 
