@@ -962,21 +962,48 @@ def process_adaptive_lazy_domains(
 					land_path,
 					dtype=np.uint8,
 				).reshape((height, width)) != 0
+				land_cells = int(np.count_nonzero(land))
+				if domain["land_cells"] is None:
+					domain["land_cells"] = land_cells
+				elif domain["land_cells"] != land_cells:
+					raise RuntimeError(
+						f"Domain {key} änderte ihre Landmaske "
+						"bei der Finalisierung."
+					)
+
 				sea = np.fromfile(
 					sea_path,
 					dtype=np.uint8,
 				).reshape((height, width))
+				has_sea = bool(np.any(sea != 0))
 
 				external = filter_external_sea(
 					meta.get("external_sea"),
 					external_sea_allow_masks[key],
 				)
-				apply_external_sea_seeds(
-					domain,
-					land,
-					external,
-					sentinel,
+				late_external_improvements = (
+					apply_external_sea_seeds(
+						domain,
+						land,
+						external,
+						sentinel,
+					)
 				)
+				if late_external_improvements:
+					raise RuntimeError(
+						"Seed-Plan unvollständig: Domain "
+						f"{key} erhielt erst bei der "
+						"Finalisierung "
+						f"{late_external_improvements} neue "
+						"External-Sea-Randwerte."
+					)
+				if has_sea and int(domain["runs"]) == 0:
+					raise RuntimeError(
+						"Seed-Plan unvollständig: Domain "
+						f"{key} enthält Sea-Zellen, wurde "
+						"während der Konvergenz aber nie "
+						"aktiviert."
+					)
 
 				boundary_path = (
 					domain_dir / "boundary.u8"
@@ -989,7 +1016,6 @@ def process_adaptive_lazy_domains(
 					sentinel,
 				).tofile(boundary_path)
 
-				has_sea = bool(np.any(sea != 0))
 				has_boundary = any(
 					np.any(values < sentinel)
 					for values in domain[
@@ -1092,6 +1118,11 @@ def process_adaptive_lazy_domains(
 		"sentinel_class": sentinel,
 		"all_domain_work_deleted": not any(
 			work_dir.iterdir()
+		),
+		"never_converged_domain_count": sum(
+			1
+			for domain in domains.values()
+			if int(domain["runs"]) == 0
 		),
 		"domains": [
 			{
