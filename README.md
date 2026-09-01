@@ -72,6 +72,22 @@ Siehe **docs/phase-1c-uniform-z13-result.md** für den Architekturtest und
 **docs/source-resolution-benchmark-v2.md** für die aktuelle
 Auflösungsentscheidung.
 
+### Candidate-Prefilter und serielle Komponenten
+
+Der 70-m-Candidate-Pfad ist inzwischen als Low-Memory-Prototyp validiert.
+Auf einer Nordadria-/Alpen-Domain können 87,69 % der Landzellen bereits vor
+dem vollständigen V2-Solver ausgeschlossen werden. Ein konservativer
+~423-m-Vorfilter behält davon 86,97 % Ausschlusswirkung bei **0 False
+Negatives**.
+
+Die Verarbeitung wird auf **Candidate-Land-Komponenten** umgestellt: Meer wird
+nicht als verbindende Komponente behandelt, sondern nur als Threshold-0-
+Randbedingung. Einzelne exakte Land-Komponenten können dadurch seriell
+gerechnet und danach aus dem RAM entfernt werden. Übergroße Einzelkomponenten
+erhalten als Fallback eine interne Domain-Zerlegung.
+
+Siehe `docs/candidate-prefilter-and-components.md`.
+
 ## Struktur
 
 - `config/` – Pilot- und spätere Produktionskonfigurationen

@@ -1,0 +1,71 @@
+{
+	"benchmark": "candidate-prefilter-north-adriatic-alps-z11",
+	"date": "2026-09-01",
+	"bounds": [
+		10.5,
+		44,
+		16,
+		48.5
+	],
+	"fine_grid": {
+		"zoom": 11,
+		"width": 16896,
+		"height": 19456,
+		"cells": 328728576
+	},
+	"exact_candidate": {
+		"candidate_cells": 77346597,
+		"candidate_pct": 23.529015,
+		"sea_cells": 42053283,
+		"land_cells": 286675293,
+		"candidate_land_cells": 35293314,
+		"candidate_land_pct": 12.311251,
+		"land_excluded_pct": 87.688749
+	},
+	"conservative_factors": {
+		"2": {
+			"false_negative_cells": 0,
+			"conservative_candidate_land_pct": 12.355476,
+			"land_excluded_pct": 87.644524,
+			"land_candidate_inflation_factor": 1.003592
+		},
+		"4": {
+			"false_negative_cells": 0,
+			"conservative_candidate_land_pct": 12.623519,
+			"land_excluded_pct": 87.376481,
+			"land_candidate_inflation_factor": 1.025364
+		},
+		"8": {
+			"false_negative_cells": 0,
+			"conservative_candidate_land_pct": 12.774882,
+			"land_excluded_pct": 87.225118,
+			"land_candidate_inflation_factor": 1.037659
+		},
+		"16": {
+			"false_negative_cells": 0,
+			"conservative_candidate_land_pct": 13.033047,
+			"land_excluded_pct": 86.966953,
+			"land_candidate_inflation_factor": 1.058629
+		}
+	},
+	"low_memory_pipeline": {
+		"streamed_dem_peak_rss_kb": 144936,
+		"factor16_coarse_build_peak_rss_kb": 48816,
+		"factor16_candidate_peak_rss_kb": 8848,
+		"factor16_chunk_fine_rows": 64
+	},
+	"factor16_land_components": {
+		"component_count": 580,
+		"land_candidate_cells": 142091,
+		"largest_component_cells": 131893,
+		"largest_component_pct_of_land_candidates": 92.8229,
+		"component_analyzer_peak_rss_kb": 4728,
+		"component_analyzer_elapsed": "0:00.00"
+	},
+	"decision": {
+		"coarse_components_are_work_regions_only": true,
+		"sea_excluded_from_land_components": true,
+		"exact_land_components_processed_serially": true,
+		"oversized_component_uses_domain_fallback": true
+	}
+}
