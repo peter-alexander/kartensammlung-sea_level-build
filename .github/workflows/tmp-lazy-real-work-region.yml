@@ -1,0 +1,434 @@
+name: Temporary lazy real work region pilot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-lazy-real-work-region.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build solver
+        run: |
+          mkdir -p build tmp/lazy-real cache tmp/ocean-source
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
+            -o build/priority_flood_quantized
+
+      - name: Download safe coarse work region artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: safe-coarse-work-regions-factor16
+          path: tmp/lazy-real/coarse
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33542989761
+
+      - name: Download ocean polygons
+        run: |
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+            -d tmp/ocean-source
+
+          find tmp/ocean-source -maxdepth 1 -type f -print
+
+      - name: Build real work region geometry
+        run: |
+          python scripts/prepare_candidate_work_region.py \
+            --components-report tmp/lazy-real/coarse/factor-16/components.json \
+            --spans tmp/lazy-real/coarse/factor-16/components.rle \
+            --grid tmp/lazy-real/coarse/parent/grid.json \
+            --component-id 15 \
+            --factor 16 \
+            --halo-coarse-cells 1 \
+            --output-geojson tmp/lazy-real/work-region.geojson \
+            --output-report tmp/lazy-real/work-region.json
+
+          cat tmp/lazy-real/work-region.json
+
+      - name: Plan source fidelity
+        run: |
+          python scripts/plan_work_region.py \
+            --work-geojson tmp/lazy-real/work-region.geojson \
+            --output-dir tmp/lazy-real/plan \
+            --coverage-zoom 8 \
+            --coverage-context-tiles 1 \
+            --cache-dir cache \
+            --workers 12
+
+          cat tmp/lazy-real/plan/plan.json
+
+      - name: Plan sparse highres domains
+        run: |
+          python scripts/plan_lazy_work_region_domains.py \
+            --components-report tmp/lazy-real/coarse/factor-16/components.json \
+            --spans tmp/lazy-real/coarse/factor-16/components.rle \
+            --component-id 15 \
+            --parent-grid tmp/lazy-real/coarse/parent/grid.json \
+            --fine-config tmp/lazy-real/plan/dem-config.json \
+            --coarse-factor 16 \
+            --domain-width 1024 \
+            --domain-height 1024 \
+            --output tmp/lazy-real/domain-plan.json
+
+          cat tmp/lazy-real/domain-plan.json
+
+      - name: Run lazy Mapterhorn work region
+        run: |
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          /usr/bin/time -v \
+            python scripts/process_lazy_mapterhorn_work_region.py \
+              --components-report tmp/lazy-real/coarse/factor-16/components.json \
+              --spans tmp/lazy-real/coarse/factor-16/components.rle \
+              --component-id 15 \
+              --parent-grid tmp/lazy-real/coarse/parent/grid.json \
+              --fine-config tmp/lazy-real/plan/dem-config.json \
+              --coarse-factor 16 \
+              --sea-vector "$SHP" \
+              --cache-dir cache \
+              --work-dir tmp/lazy-real/lazy-work \
+              --output-dir tmp/lazy-real/lazy-output \
+              --solver build/priority_flood_quantized \
+              --levels "$(python scripts/threshold_levels.py --csv)" \
+              --domain-width 1024 \
+              --domain-height 1024 \
+              --workers 12 \
+            2>&1 | tee tmp/lazy-real/lazy.log
+
+          test ! -e tmp/lazy-real/lazy-output/threshold.u8
+
+      - name: Build global QA reference DEM
+        run: |
+          mkdir -p tmp/lazy-real/reference
+
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+              --config tmp/lazy-real/plan/dem-config.json \
+              --cache-dir cache \
+              --work-dir tmp/lazy-real/reference \
+              --workers 12 \
+            2>&1 | tee tmp/lazy-real/reference-dem.log
+
+      - name: Mask reference and rasterize identical sea
+        run: |
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          python - "$SHP" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          import numpy as np
+
+          sys.path.insert(0, "scripts")
+
+          from materialize_mapterhorn_work_region_domain import (
+              MapterhornWorkRegionDomainMaterializer,
+          )
+
+          root = Path("tmp/lazy-real")
+          sea_vector = Path(sys.argv[1])
+          materializer = MapterhornWorkRegionDomainMaterializer(
+              fine_config_path=root / "plan/dem-config.json",
+              components_report_path=(
+                  root / "coarse/factor-16/components.json"
+              ),
+              spans_path=(
+                  root / "coarse/factor-16/components.rle"
+              ),
+              component_id=15,
+              parent_grid_path=root / "coarse/parent/grid.json",
+              coarse_factor=16,
+              sea_vector_path=sea_vector,
+              cache_dir="cache",
+              workers=1,
+          )
+
+          grid = json.loads(
+              (root / "reference/grid.json").read_text()
+          )["grid"]
+          domain = {
+              "grid_row": 0,
+              "grid_col": 0,
+              "x0": 0,
+              "y0": 0,
+              "width": int(grid["width"]),
+              "height": int(grid["height"]),
+          }
+
+          land = materializer._land_mask(domain)
+          land.tofile(root / "reference/land.u8")
+
+          elevation = np.memmap(
+              root / "reference/elevation.f32",
+              dtype=np.float32,
+              mode="r+",
+              shape=(
+                  int(grid["height"]),
+                  int(grid["width"]),
+              ),
+          )
+          elevation[land == 0] = np.nan
+          elevation.flush()
+          del elevation
+
+          local_grid = materializer._local_grid(domain)
+          sea_halo = materializer._rasterize_sea_halo(
+              local_grid
+          )
+          sea_halo[1:-1, 1:-1].tofile(
+              root / "reference/sea.u8"
+          )
+
+          print({
+              "land_cells": int(np.count_nonzero(land)),
+              "sea_cells": int(
+                  np.count_nonzero(sea_halo[1:-1, 1:-1])
+              ),
+              "grid_cells": int(grid["cells"]),
+          })
+          PY
+
+      - name: Run global QA reference
+        run: |
+          eval "$(
+            python - tmp/lazy-real/reference/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          /usr/bin/time -v \
+            build/priority_flood_quantized \
+              --elevation tmp/lazy-real/reference/elevation.f32 \
+              --sea-mask tmp/lazy-real/reference/sea.u8 \
+              --output tmp/lazy-real/reference/threshold.u8 \
+              --width "$WIDTH" \
+              --height "$HEIGHT" \
+              --levels "$(python scripts/threshold_levels.py --csv)" \
+              --connectivity 4 \
+            2>&1 | tee tmp/lazy-real/reference-flood.log
+
+      - name: Compare sparse lazy result with global reference
+        run: |
+          SHP="$(find tmp/ocean-source -maxdepth 1 -name '*.shp' -print -quit)"
+
+          python - "$SHP" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          import numpy as np
+
+          sys.path.insert(0, "scripts")
+
+          from materialize_mapterhorn_work_region_domain import (
+              MapterhornWorkRegionDomainMaterializer,
+          )
+
+          root = Path("tmp/lazy-real")
+          sea_vector = Path(sys.argv[1])
+          lazy_report = json.loads(
+              (root / "lazy-output/report.json").read_text()
+          )
+          plan = lazy_report["domain_plan"]
+          fine_grid = plan["fine_grid"]
+          height = int(fine_grid["height"])
+          width = int(fine_grid["width"])
+          sentinel = int(
+              lazy_report["solver"]["sentinel_class"]
+          )
+
+          reference = np.memmap(
+              root / "reference/threshold.u8",
+              dtype=np.uint8,
+              mode="r",
+              shape=(height, width),
+          )
+
+          materializer = MapterhornWorkRegionDomainMaterializer(
+              fine_config_path=root / "plan/dem-config.json",
+              components_report_path=(
+                  root / "coarse/factor-16/components.json"
+              ),
+              spans_path=(
+                  root / "coarse/factor-16/components.rle"
+              ),
+              component_id=15,
+              parent_grid_path=root / "coarse/parent/grid.json",
+              coarse_factor=16,
+              sea_vector_path=sea_vector,
+              cache_dir="cache",
+              workers=1,
+          )
+
+          differing = 0
+          compared = 0
+          outside_non_sentinel = 0
+          missing_files = []
+
+          for domain in plan["domains"]:
+              key = (
+                  f"r{domain['grid_row']}-"
+                  f"c{domain['grid_col']}.u8"
+              )
+              path = (
+                  root
+                  / "lazy-output/threshold-domains"
+                  / key
+              )
+              if not path.exists():
+                  missing_files.append(key)
+                  continue
+
+              local_height = int(domain["height"])
+              local_width = int(domain["width"])
+              lazy = np.fromfile(
+                  path,
+                  dtype=np.uint8,
+              ).reshape((local_height, local_width))
+              land = materializer._land_mask(domain) != 0
+
+              y0 = int(domain["y0"])
+              x0 = int(domain["x0"])
+              ref = reference[
+                  y0:y0 + local_height,
+                  x0:x0 + local_width,
+              ]
+
+              differing += int(
+                  np.count_nonzero(
+                      lazy[land] != ref[land]
+                  )
+              )
+              compared += int(np.count_nonzero(land))
+              outside_non_sentinel += int(
+                  np.count_nonzero(
+                      lazy[~land] != sentinel
+                  )
+              )
+
+          comparison = {
+              "component_id": 15,
+              "source_fidelity_zoom": int(
+                  lazy_report[
+                      "domain_plan"
+                  ]["fine_grid"]["zoom"]
+              ),
+              "active_domains": int(
+                  plan["active_domain_count"]
+              ),
+              "solver_runs": int(
+                  lazy_report["solver"]["solver_runs"]
+              ),
+              "materializations": int(
+                  lazy_report["solver"]["materializations"]
+              ),
+              "peak_materialized_cells": int(
+                  lazy_report[
+                      "solver"
+                  ]["peak_materialized_cells"]
+              ),
+              "compared_land_cells": compared,
+              "differing_land_cells": differing,
+              "outside_non_sentinel_cells": (
+                  outside_non_sentinel
+              ),
+              "missing_domain_files": missing_files,
+              "byte_equal_on_work_region": (
+                  differing == 0
+                  and outside_non_sentinel == 0
+                  and not missing_files
+              ),
+          }
+          (root / "comparison.json").write_text(
+              json.dumps(comparison, indent=2) + "\n"
+          )
+          print(json.dumps(comparison, indent=2))
+
+          if missing_files:
+              raise AssertionError(missing_files)
+          if compared <= 0:
+              raise AssertionError(
+                  "Keine Work-Region-Zellen verglichen."
+              )
+          if differing != 0:
+              raise AssertionError(
+                  f"{differing} Landzellen weichen ab."
+              )
+          if outside_non_sentinel != 0:
+              raise AssertionError(
+                  f"{outside_non_sentinel} Werte außerhalb "
+                  "der Work Region."
+              )
+          PY
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: lazy-real-work-region-pilot
+          path: |
+            tmp/lazy-real/work-region.json
+            tmp/lazy-real/work-region.geojson
+            tmp/lazy-real/plan/plan.json
+            tmp/lazy-real/plan/dem-config.json
+            tmp/lazy-real/domain-plan.json
+            tmp/lazy-real/lazy-output/report.json
+            tmp/lazy-real/comparison.json
+            tmp/lazy-real/lazy.log
+            tmp/lazy-real/reference-dem.log
+            tmp/lazy-real/reference-flood.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-lazy-real-work-region.yml ]; then
+            git rm .github/workflows/tmp-lazy-real-work-region.yml
+            git commit -m "Remove temporary lazy real work region pilot"
+            git pull --rebase
+            git push
+          fi
