@@ -496,6 +496,15 @@ def geometry_feature(source, geometry, metadata, planning):
 		"access_year": metadata.get("access_year"),
 		"automatic_tier": planning.get("automatic_tier"),
 		"tier3_candidate": planning.get("tier3_candidate"),
+		"source_fidelity_processing_zoom": planning.get(
+			"source_fidelity_processing_zoom"
+		),
+		"source_fidelity_ground_resolution_m": planning.get(
+			"source_fidelity_ground_resolution_m"
+		),
+		"source_fidelity_undersampled_by_recommendation": planning.get(
+			"source_fidelity_undersampled_by_recommendation"
+		),
 		"recommended_target_ground_resolution_m": planning.get(
 			"recommended_target_ground_resolution_m"
 		),
