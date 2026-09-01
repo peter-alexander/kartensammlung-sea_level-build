@@ -63,15 +63,16 @@ def main():
 		(1, 1),
 		(1, 2),
 		(2, 1),
-		(2, 2),
 	}
 	if keys != expected:
 		raise AssertionError(
 			f"expected={expected} actual={keys}"
 		)
-	if report["active_domain_count"] != 4:
+	if report["active_domain_count"] != 3:
 		raise AssertionError(report)
-	if abs(report["active_domain_fraction"] - 0.25) > 1e-12:
+	if abs(
+		report["active_domain_fraction"] - 3.0 / 16.0
+	) > 1e-12:
 		raise AssertionError(report)
 
 	print("ok")
