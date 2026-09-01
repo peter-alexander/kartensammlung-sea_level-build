@@ -1,0 +1,249 @@
+name: Temporary mixed fidelity DEM pilot
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-mixed-fidelity-dem-pilot.yml
+
+permissions:
+  contents: write
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow shapely mapbox-vector-tile
+
+      - name: Plan exact mixed source work region
+        run: |
+          mkdir -p tmp/mixed-fidelity cache
+
+          python scripts/plan_work_region.py \
+            --bbox=13.8262939453125,45.67548217560646,13.8372802734375,45.679320235695386 \
+            --output-dir tmp/mixed-fidelity/plan \
+            --coverage-zoom 8 \
+            --coverage-context-tiles 1 \
+            --cache-dir cache \
+            --workers 12 \
+            --max-uniform-cells 10000000
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan = json.loads(
+              Path("tmp/mixed-fidelity/plan/plan.json").read_text()
+          )
+          print(json.dumps(plan, indent=2))
+
+          if plan["uniform_processing_zoom"] != 16:
+              raise RuntimeError(
+                  "Gemischter Pilot muss wegen si auf Z16 planen."
+              )
+
+          effective = {
+              item["source"]: item
+              for item in plan["coverage"]["effective_sources"]
+          }
+          if "si" not in effective or "tinitaly" not in effective:
+              raise RuntimeError(
+                  "Gemischter Pilot muss si und tinitaly enthalten."
+              )
+          PY
+
+      - name: Materialize uniform mixed fidelity DEM
+        run: |
+          mkdir -p tmp/mixed-fidelity/dem
+
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+              --config tmp/mixed-fidelity/plan/dem-config.json \
+              --cache-dir cache \
+              --work-dir tmp/mixed-fidelity/dem \
+              --workers 12 \
+            2>&1 | tee tmp/mixed-fidelity/dem.log
+
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          meta = json.loads(
+              Path("tmp/mixed-fidelity/dem/grid.json").read_text()
+          )
+          dem = meta["dem"]
+          parent_zooms = Counter(
+              int(item["parent_zoom"])
+              for item in dem["fallback_tiles"]
+          )
+
+          report = {
+              "grid": meta["grid"],
+              "requested_missing_tile_count": (
+                  dem["requested_missing_tile_count"]
+              ),
+              "fallback_mode": dem["overzoom_fallback_mode"],
+              "fallback_tile_count": dem["fallback_tile_count"],
+              "fallback_parent_tile_count": (
+                  dem["fallback_parent_tile_count"]
+              ),
+              "fallback_target_parent_zooms": dict(
+                  sorted(parent_zooms.items())
+              ),
+              "missing_tile_count": dem["missing_tile_count"],
+          }
+          Path("tmp/mixed-fidelity/mixed-summary.json").write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          print(json.dumps(report, indent=2))
+
+          if dem["missing_tile_count"] != 0:
+              raise RuntimeError(
+                  "Gemischtes Source-Fidelity-DEM enthält Lücken."
+              )
+          if (
+              dem["requested_missing_tile_count"] > 0
+              and dem["fallback_tile_count"]
+              != dem["requested_missing_tile_count"]
+          ):
+              raise RuntimeError(
+                  "Nicht alle fehlenden Highres-Tiles wurden aufgelöst."
+              )
+          PY
+
+      - name: Prepare known real HTTP fallback probe
+        run: |
+          mkdir -p tmp/mixed-fidelity/fallback
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = {
+              "name": "real-http-fallback-z15-to-z14",
+              "bounds": {
+                  "west": 3.922119140625,
+                  "south": 52.11999865763816,
+                  "east": 3.93310546875,
+                  "north": 52.126743859642886,
+              },
+              "dem": {
+                  "provider": "mapterhorn",
+                  "processing_zoom": 15,
+                  "tile_size": 512,
+                  "encoding": "terrarium",
+                  "overzoom_fallback_minzoom": 14,
+                  "overzoom_fallback_mode": "http",
+              },
+          }
+          Path(
+              "tmp/mixed-fidelity/fallback-config.json"
+          ).write_text(
+              json.dumps(config, indent=2) + "\n"
+          )
+          PY
+
+          python scripts/prepare_phase1a_dem.py \
+            --config tmp/mixed-fidelity/fallback-config.json \
+            --cache-dir cache \
+            --work-dir tmp/mixed-fidelity/fallback \
+            --workers 4 \
+            2>&1 | tee tmp/mixed-fidelity/fallback.log
+
+      - name: Verify known real HTTP fallback
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          meta = json.loads(
+              Path("tmp/mixed-fidelity/fallback/grid.json").read_text()
+          )
+          dem = meta["dem"]
+
+          report = {
+              "grid": meta["grid"],
+              "requested_missing_tile_count": (
+                  dem["requested_missing_tile_count"]
+              ),
+              "fallback_mode": dem["overzoom_fallback_mode"],
+              "fallback_tile_count": dem["fallback_tile_count"],
+              "fallback_parent_tiles": dem["fallback_parent_tiles"],
+              "fallback_tiles": dem["fallback_tiles"],
+              "missing_tile_count": dem["missing_tile_count"],
+          }
+          Path(
+              "tmp/mixed-fidelity/fallback-summary.json"
+          ).write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          print(json.dumps(report, indent=2))
+
+          if dem["requested_missing_tile_count"] != 1:
+              raise RuntimeError(
+                  "Bekannte Z15-Probe sollte genau ein 404-Tile liefern."
+              )
+          if dem["fallback_tile_count"] != 1:
+              raise RuntimeError(
+                  "Das fehlende Z15-Tile wurde nicht ersetzt."
+              )
+          if dem["missing_tile_count"] != 0:
+              raise RuntimeError(
+                  "HTTP-Fallback ließ eine DEM-Lücke zurück."
+              )
+          fallback = dem["fallback_tiles"][0]
+          if int(fallback["parent_zoom"]) != 14:
+              raise RuntimeError(
+                  f"Erwartete Z14-Parent, bekam {fallback}."
+              )
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixed-fidelity-dem-pilot
+          path: |
+            tmp/mixed-fidelity/plan/plan.json
+            tmp/mixed-fidelity/plan/dem-config.json
+            tmp/mixed-fidelity/plan/effective-sources.geojson
+            tmp/mixed-fidelity/dem/grid.json
+            tmp/mixed-fidelity/dem.log
+            tmp/mixed-fidelity/mixed-summary.json
+            tmp/mixed-fidelity/fallback/grid.json
+            tmp/mixed-fidelity/fallback.log
+            tmp/mixed-fidelity/fallback-summary.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-mixed-fidelity-dem-pilot.yml ]; then
+            git rm .github/workflows/tmp-mixed-fidelity-dem-pilot.yml
+            git commit -m "Remove temporary mixed fidelity DEM pilot"
+            git pull --rebase
+            git push
+          fi
