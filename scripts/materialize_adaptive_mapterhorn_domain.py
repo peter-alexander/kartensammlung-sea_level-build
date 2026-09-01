@@ -18,6 +18,112 @@ from prepare_phase1a_dem import (
 )
 
 
+def adaptive_domain_grid(
+	parent_grid,
+	domain,
+):
+	parent_grid = dict(parent_grid)
+	zoom = int(domain["zoom"])
+	scale = int(
+		domain["fine_pixels_per_coarse_cell"]
+	)
+	parent_zoom = int(parent_grid["zoom"])
+	zoom_factor = 2 ** (zoom - parent_zoom)
+	if zoom_factor <= 0 or scale % zoom_factor != 0:
+		raise ValueError(
+			"Ungültige adaptive Zoom-/Scale-Kombination."
+		)
+
+	coarse_factor = scale // zoom_factor
+	if coarse_factor <= 0:
+		raise ValueError(
+			"Ungültiger adaptiver Coarse-Faktor."
+		)
+
+	parent_resolution = float(
+		parent_grid["resolution"]
+	)
+	coarse_resolution = (
+		parent_resolution * coarse_factor
+	)
+	resolution = coarse_resolution / scale
+
+	coarse_x0 = int(domain["coarse_x0"])
+	coarse_y0 = int(domain["coarse_y0"])
+	width = int(domain["fine_width"])
+	height = int(domain["fine_height"])
+
+	left = (
+		float(parent_grid["left"])
+		+ coarse_x0 * coarse_resolution
+	)
+	top = (
+		float(parent_grid["top"])
+		- coarse_y0 * coarse_resolution
+	)
+	right = left + width * resolution
+	bottom = top - height * resolution
+
+	half = WEB_MERCATOR_WORLD / 2.0
+	global_pixel_x0 = int(round(
+		(left + half) / resolution
+	))
+	global_pixel_y0 = int(round(
+		(half - top) / resolution
+	))
+
+	expected_left = (
+		-half + global_pixel_x0 * resolution
+	)
+	expected_top = (
+		half - global_pixel_y0 * resolution
+	)
+	if (
+		abs(expected_left - left) > 1e-5
+		or abs(expected_top - top) > 1e-5
+	):
+		raise ValueError(
+			"Adaptive Domain ist nicht auf Target-Pixel "
+			"ausgerichtet."
+		)
+
+	return {
+		"zoom": zoom,
+		"resolution": resolution,
+		"left": left,
+		"top": top,
+		"right": right,
+		"bottom": bottom,
+		"width": width,
+		"height": height,
+		"cells": width * height,
+		"global_pixel_x0": global_pixel_x0,
+		"global_pixel_y0": global_pixel_y0,
+	}
+
+
+def target_tiles_for_grid(
+	grid,
+	tile_size=512,
+):
+	tile_size = int(tile_size)
+	x0 = int(grid["global_pixel_x0"])
+	y0 = int(grid["global_pixel_y0"])
+	x1 = x0 + int(grid["width"])
+	y1 = y0 + int(grid["height"])
+
+	tile_x0 = x0 // tile_size
+	tile_y0 = y0 // tile_size
+	tile_x1 = (x1 - 1) // tile_size
+	tile_y1 = (y1 - 1) // tile_size
+
+	return [
+		(x, y)
+		for y in range(tile_y0, tile_y1 + 1)
+		for x in range(tile_x0, tile_x1 + 1)
+	]
+
+
 class AdaptiveMapterhornDomainMaterializer:
 	def __init__(
 		self,
@@ -60,96 +166,16 @@ class AdaptiveMapterhornDomainMaterializer:
 			pass
 
 	def _domain_grid(self, domain):
-		zoom = int(domain["zoom"])
-		scale = int(
-			domain["fine_pixels_per_coarse_cell"]
+		return adaptive_domain_grid(
+			self.parent_grid,
+			domain,
 		)
-		coarse_factor = (
-			scale
-			// (2 ** (zoom - int(self.parent_grid["zoom"])))
-		)
-		if coarse_factor <= 0:
-			raise ValueError(
-				"Ungültiger adaptiver Coarse-Faktor."
-			)
-
-		parent_resolution = float(
-			self.parent_grid["resolution"]
-		)
-		coarse_resolution = (
-			parent_resolution * coarse_factor
-		)
-		resolution = coarse_resolution / scale
-
-		coarse_x0 = int(domain["coarse_x0"])
-		coarse_y0 = int(domain["coarse_y0"])
-		width = int(domain["fine_width"])
-		height = int(domain["fine_height"])
-
-		left = (
-			float(self.parent_grid["left"])
-			+ coarse_x0 * coarse_resolution
-		)
-		top = (
-			float(self.parent_grid["top"])
-			- coarse_y0 * coarse_resolution
-		)
-		right = left + width * resolution
-		bottom = top - height * resolution
-
-		half = WEB_MERCATOR_WORLD / 2.0
-		global_pixel_x0 = int(round(
-			(left + half) / resolution
-		))
-		global_pixel_y0 = int(round(
-			(half - top) / resolution
-		))
-
-		expected_left = (
-			-half + global_pixel_x0 * resolution
-		)
-		expected_top = (
-			half - global_pixel_y0 * resolution
-		)
-		if (
-			abs(expected_left - left) > 1e-5
-			or abs(expected_top - top) > 1e-5
-		):
-			raise ValueError(
-				"Adaptive Domain ist nicht auf Target-Pixel "
-				"ausgerichtet."
-			)
-
-		return {
-			"zoom": zoom,
-			"resolution": resolution,
-			"left": left,
-			"top": top,
-			"right": right,
-			"bottom": bottom,
-			"width": width,
-			"height": height,
-			"cells": width * height,
-			"global_pixel_x0": global_pixel_x0,
-			"global_pixel_y0": global_pixel_y0,
-		}
 
 	def _target_tiles(self, grid):
-		x0 = int(grid["global_pixel_x0"])
-		y0 = int(grid["global_pixel_y0"])
-		x1 = x0 + int(grid["width"])
-		y1 = y0 + int(grid["height"])
-
-		tile_x0 = x0 // self.tile_size
-		tile_y0 = y0 // self.tile_size
-		tile_x1 = (x1 - 1) // self.tile_size
-		tile_y1 = (y1 - 1) // self.tile_size
-
-		return [
-			(x, y)
-			for y in range(tile_y0, tile_y1 + 1)
-			for x in range(tile_x0, tile_x1 + 1)
-		]
+		return target_tiles_for_grid(
+			grid,
+			self.tile_size,
+		)
 
 	def _download_tiles(self, grid):
 		zoom = int(grid["zoom"])
