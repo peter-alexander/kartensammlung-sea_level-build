@@ -1,6 +1,6 @@
 # Mapterhorn Coverage Planner
 
-Stand: 31. August 2026
+Stand: 1. September 2026
 
 ## Zweck
 
@@ -17,8 +17,13 @@ Er beantwortet für ein Zielgebiet:
 - welcher Web-Mercator-Processing-Zoom aus Source-Auflösung und Breitenlage
   sinnvoll ist.
 
-Die Refinement-Gebiete werden damit nicht über Ländergrenzen oder eine manuell
-gepflegte Liste definiert.
+Die High-Resolution-Bereiche werden damit nicht über Ländergrenzen oder eine
+manuell gepflegte Liste definiert.
+
+Nach dem Uniform-Z13-Benchmark ist die Source-Coverage jedoch nicht mehr
+automatisch die Grenze eines separat gelösten Refinement-Thresholdfelds. Sie
+liefert primär die Information, **welche DEM-Qualität vorhanden ist und welcher
+Processing-Zoom sich für eine größere zusammenhängende Processing-Domain lohnt**.
 
 ## Mapterhorn-Datenquellen
 
@@ -68,8 +73,14 @@ Aggregationslogik. Für den Flood-Build verwenden wir das bereits aggregierte
 Mapterhorn-Terrain.
 
 Der Coverage Planner muss diese Verschneidung deshalb nicht nachbauen. Er nutzt
-die Source-Coverages für die Entscheidung, **wo** und **wie fein** ein
-Refinement sinnvoll ist.
+die Source-Coverages für die Entscheidung, **wo** eine höhere DEM-Qualität
+vorhanden ist und **wie fein** eine Processing-Domain sinnvoll gerechnet werden
+kann.
+
+Die eigentliche Flood-Berechnung soll innerhalb einer Domain möglichst auf einem
+gemeinsamen Graphen erfolgen. Fehlende High-Resolution-Tiles dürfen dabei aus der
+globalen Mapterhorn-Basis überzoomt werden; die reale DEM-Genauigkeit bleibt
+selbstverständlich die der gröberen Quelle.
 
 ## Planungsregeln
 
@@ -200,20 +211,27 @@ Beispiele:
 
 ## Verbindung mit der Buildpipeline
 
-Nach dem Planner folgt:
+Der bevorzugte regionale Pfad nach dem Planner ist jetzt:
 
-1. `prepare_refinement_region.py` – Source-Coverage, Core, Collar und Workarea,
-2. `build_refinement_boundary.py` – Parent-Thresholds auf Fine-Rand,
-3. `priority_flood_quantized` – Fine-Threshold,
-4. `build_composite_threshold.py` – Fine-Core überschreibt Base,
-5. `build_threshold_pyramid.py` – gemeinsame Rasterpyramide,
-6. PMTiles-Ausgabe.
+1. Coverage und Source-Auflösung bestimmen den empfohlenen Processing-Zoom.
+2. Eine ausreichend große zusammenhängende Processing-Domain wird festgelegt.
+3. `prepare_phase1a_dem.py` baut auf diesem Zoom ein gemeinsames DEM-Raster:
+   - echte High-Resolution-Tiles, wo vorhanden,
+   - `planet.pmtiles` als gröberer Overzoom-Fallback.
+4. Die OSM-Ocean-Maske wird auf exakt dasselbe Raster gebracht.
+5. `priority_flood_quantized` löst die gesamte Domain in **einem** Lauf.
+6. `build_threshold_pyramid.py` erzeugt erst danach die Ausgabezoomstufen.
+7. PMTiles wird erzeugt und verifiziert.
 
-Ein wichtiges Folgeproblem der Source-abhängigen Zooms ist bereits identifiziert:
-Der bisherige Transition Collar wird in Fine-Pixeln und der Halo in Fine-Tiles
-angegeben. Bei einem Zoomwechsel ändern sich damit ihre physischen Breiten.
-Vor dem ersten großen Z13-Composite werden diese Parameter deshalb auf
-zoomunabhängig vergleichbare Distanzen umgestellt.
+Der westliche Niederlande-Pilot hat diesen Pfad auf Z13 mit
+1.394.606.080 Zellen vollständig validiert.
+
+Die bisherige Hierarchie aus `prepare_refinement_region.py`,
+`build_refinement_boundary.py` und `build_composite_threshold.py` bleibt als
+Alternative für spätere **Processing-Domain-Grenzen** erhalten. Sie ist weiterhin
+notwendig, wenn ein großes Gebiet nicht in einem gemeinsamen Raster gelöst werden
+kann. Solche Grenzen werden künftig aber nicht automatisch an eine
+DEM-Source-Coverage gelegt.
 
 ## Reproduzierbarkeit
 
@@ -225,8 +243,10 @@ Ein Produktionsbuild speichert mindestens:
 - native Source-Auflösung,
 - Ziel-Bodenauflösung und Processing-Zoom,
 - betroffene Z13+-Archive,
-- Collar-/Halo-Parameter,
-- Parent-/Fine-Buildmetadaten.
+- Processing-Domain und Zielzoom,
+- High-Resolution-/Fallback-Anteile,
+- gegebenenfalls Domain-Randbedingungen,
+- bei hierarchischer Zerlegung zusätzlich Collar-/Halo- und Parent-Metadaten.
 
 Damit bleibt nachvollziehbar, warum eine Region zu einem bestimmten Zeitpunkt
 mit einer bestimmten Auflösung gerechnet wurde.

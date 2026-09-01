@@ -10,23 +10,56 @@ Sliderwert.
 
 ## Aktueller Stand
 
-Die Pipeline funktioniert inzwischen hierarchisch end-to-end:
+Der bevorzugte regionale High-Resolution-Pfad ist inzwischen als **uniforme
+Processing-Domain** validiert:
 
-- Mapterhorn-Coverage-Planner,
-- globale/regionale Base,
-- automatische High-Resolution-Refinements,
-- Parent-Thresholds als Fine-Randbedingungen,
-- Transition Collar + Priority-Flood-Halo,
-- quantisierter 4er-Priority-Flood,
-- Merge Base + Fine,
-- gemeinsame Rasterpyramide,
-- PMTiles-Ausgabe.
+- Mapterhorn-Coverage-Planner bestimmt, wo eine höhere Arbeitsauflösung fachlich
+  sinnvoll ist,
+- eine Processing-Domain erhält einen einheitlichen Processing-Zoom,
+- innerhalb dieser Domain wird das bestverfügbare Mapterhorn-Terrain verwendet,
+- fehlende High-Resolution-Tiles werden geometrisch korrekt aus
+  `planet.pmtiles` überzoomt,
+- verbleibende DEM-Lücken sind nur zulässig, wenn sie vollständig in der
+  Ocean-Maske liegen,
+- auf dem gesamten Domain-Raster läuft **ein einziger** quantisierter
+  4er-Priority-Flood,
+- die Rasterpyramide wird erst nach der vollständigen Flood-Berechnung erzeugt.
 
-Phase 1C für die westlichen Niederlande kombiniert eine Z11-Base mit einem
-automatisch erkannten AHN5-Z12-Refinement. Der historische V1-Lauf bleibt unter
-`output/phase1c/` erhalten.
+Damit ist die Source-Coverage **keine harte Threshold-Merge-Grenze mehr**.
+Unterschiedliche DEM-Qualität darf innerhalb einer Processing-Domain wechseln;
+die Meer-Konnektivität wird trotzdem auf einem gemeinsamen Graphen gelöst.
 
-Der validierte V2-Lauf liegt unter `output/phase1c-v2/` und verwendet:
+Der westliche Niederlande-Pilot wurde vollständig auf Z13 gerechnet:
+
+- 35.840 × 38.912 Pixel,
+- 1.394.606.080 Zellen,
+- 800 fehlende Z13-Tiles am High-Resolution-Endpunkt,
+- davon 448 über Z12 aus `planet.pmtiles` ersetzt,
+- 352 verbleibende Tiles ausschließlich über offenem Meer,
+- Priority Flood: 28,51 s,
+- Peak-RSS des Floods: 8.284.340 KiB,
+- PMTiles Z6–Z13: 39.630.942 Bytes,
+- SHA256:
+  `ff178fe94f592f92e66d8466184e962eece55532f3bedb1e13d020a50de55225`,
+- `go-pmtiles verify`: erfolgreich.
+
+Der frühere hierarchische Z11→Z13-Pilot bleibt als wichtiger Vergleich erhalten.
+Er benötigte etwas weniger Ressourcen, erzeugte aber an der harten
+Threshold-Merge-Grenze bei 5 m bis zu 6,388878 % unterschiedliche Sliderzustände.
+Auch ein zwischengeschaltetes Z12-Thresholdfeld beseitigte diese innere Naht
+nicht. Größere Transition Collars reduzierten sie, lösten das Grundproblem aber
+nicht.
+
+Die Hierarchie-Infrastruktur wird deshalb **nicht entfernt**. Parent-Thresholds,
+Boundary-Seeds, Halo und Composite bleiben als Werkzeuge für eine spätere
+Zerlegung sehr großer Produktionsgebiete in Processing-Domains erhalten. Sie
+sollen jedoch nicht mehr automatisch exakt an DEM-Source-Coverages als sichtbare
+Threshold-Merge-Grenzen eingesetzt werden.
+
+Der validierte V2-Z12-Stand bleibt unter `output/phase1c-v2/` erhalten; der neue
+uniforme Z13-Stand wird getrennt als QA-Variante veröffentlicht.
+
+Die verwendete V2-Thresholdklassierung bleibt unverändert:
 
 - 0–2 m: 0,1-m-Schritte,
 - >2–5 m: 0,25-m-Schritte,
@@ -34,41 +67,12 @@ Der validierte V2-Lauf liegt unter `output/phase1c-v2/` und verwendet:
 - >20–70 m: 5-m-Schritte,
 - 58 reguläre Klassen plus Sentinel.
 
-Das V2-PMTiles umfasst Z6–Z12, ist 15.125.875 Bytes groß und wurde erfolgreich
-verifiziert. Die neue Slider-Seam-QA vergleicht nicht nur Meterdifferenzen,
-sondern direkt, ob Base und Fine bei einer konkreten Sliderstufe unterschiedliche
-Überflutungszustände liefern.
-
-An der echten Refinement-Seam liegt die maximale Abweichung bei:
-
-- 0–2 m: 4 von 76.588 Randpixeln (0,005223 %) bei 0,2 m,
-- >2–5 m: 538 Pixel (0,702460 %) bei 4,75 m,
-- >5–20 m: 69 Pixel (0,090092 %) bei 17 m,
-- >20–70 m: 63 Pixel (0,082258 %) bei 30 m.
-
-Gerade im zentralen 0–2-m-Bereich ist die sichtbare Fine/Base-Seam damit
-praktisch verschwunden. Der Bereich um 4,75–5 m wird beim visuellen Test gezielt
-kontrolliert.
-
 Die numerische Klassenauflösung ist nicht mit der regional tatsächlich
 verfügbaren DEM-Genauigkeit gleichzusetzen; diese hängt von der jeweiligen Quelle
 ab.
 
-Der visuelle Test des V2-Composites in der Kartensammlung ist bestanden. Der
-anschließende Z11/Z12/Z13-V2-Benchmark hat die frühere Z12-Empfehlung für AHN5
-revidiert: Im Hoek-/Rotterdam-Test öffnet Z12 eine große Polderfläche bereits bei
-3,75 m, Z13 erst bei 4,0 m. Bei 3,75 m unterscheiden sich 44,300326 % der
-Benchmarkzellen im sichtbaren Überflutungszustand.
-
-Der Coverage Planner verwendet deshalb jetzt eine source-abhängige Auflösung:
-
-- Tier 2: `target = max(native_source_resolution, 6 m)`,
-- Tier 3 QA: `target = max(native_source_resolution, 3 m)` für Sources <=2 m.
-
-Für AHN5 5 m ergibt das bei ungefähr 52° N automatisch Z13 / rund 5,9 m
-Bodenpixel. Vor dem nächsten großen Z13-Composite werden Transition Collar und
-Priority-Flood-Halo noch von zoomabhängigen Pixel-/Tilewerten auf physisch
-vergleichbare Breiten umgestellt.
+Siehe `docs/phase-1c-uniform-z13-result.md` für den vollständigen
+Uniform-Z13-Befund.
 
 ## Struktur
 

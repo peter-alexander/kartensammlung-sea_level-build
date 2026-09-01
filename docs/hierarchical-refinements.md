@@ -1,6 +1,13 @@
 # Hierarchische Refinements
 
-Stand: 31. August 2026
+Stand: 1. September 2026
+
+> **Status:** Die hier dokumentierte Parent-/Boundary-Technik bleibt technisch
+> valide und wird nicht entfernt. Nach den Z13-V2-Benchmarks ist ein harter
+> Threshold-Merge an DEM-Source-Coverages jedoch **nicht mehr der bevorzugte
+> regionale Produktionspfad**. Für High-Resolution-Küstenregionen wird zunächst
+> eine uniforme Processing-Domain mit gemischter DEM-Qualität und einem einzigen
+> Priority-Flood bevorzugt.
 
 ## Ziel
 
@@ -366,9 +373,73 @@ Damit gibt es in MapLibre weiterhin nur einen logischen
 `inundation_threshold`-Datensatz. Der Browser muss weder Parent noch
 Refinement-Grenzen kennen.
 
-## Aktueller Produktionsstand
+## Erkenntnis aus den Z13-V2-Benchmarks
 
-Der erste vollständige hierarchische Phase-1C-Pilot funktioniert:
+Die Boundary-Vererbung funktioniert mathematisch und bleibt für eine spätere
+Zerlegung großer Gebiete wertvoll. Der westliche Niederlande-Pilot zeigte jedoch
+ein anderes Problem: Werden **zwei separat gelöste Thresholdfelder** mit
+unterschiedlicher Processing-Auflösung an einer Source-Grenze zusammengesetzt,
+kann dort trotz korrekter Randbedingungen eine sichtbare Diskretisierungsnaht
+entstehen.
+
+Gemessene maximale Slider-Abweichung im Bereich >2–5 m:
+
+| Aufbau | maximale unterschiedliche Darstellung |
+| --- | ---: |
+| Z13 direkt auf Z11, ~2,45-km-Collar | **6,388878 % bei 5 m** |
+| Z13 direkt auf Z11, ~9,78-km-Collar | **3,723 % bei 5 m** |
+| Z11 → breites Z12 → Z13 | **5,880 % an der inneren Z13/Z12-Naht** |
+
+Damit ist das Überspringen von Z12 nicht die Hauptursache. Ein immer größerer
+Collar verschiebt und dämpft die Naht, beseitigt aber nicht das Grundproblem.
+
+### Bevorzugter regionaler Pfad
+
+Für eine High-Resolution-Küstenregion wird deshalb zunächst folgende Architektur
+verwendet:
+
+```text
+Coverage + Source-Auflösung
+        ↓
+Processing-Domain + gemeinsamer Zielzoom
+        ↓
+High-Resolution DEM, wo vorhanden
+        +
+gröberes Planet-DEM als Overzoom-Fallback
+        ↓
+eine Ocean-Maske auf demselben Raster
+        ↓
+ein Priority Flood über die gesamte Domain
+        ↓
+Threshold-Pyramide / PMTiles
+```
+
+Die Source-Coverage bestimmt damit die **DEM-Qualität und sinnvolle
+Processing-Auflösung**, nicht die harte Grenze eines Threshold-Merges.
+
+Im validierten westlichen Niederlande-Z13-Pilot wurden 1.394.606.080 Zellen in
+einem einzigen Flood gerechnet. Der Flood lief in 28,51 s bei 8.284.340 KiB
+Peak-RSS; das verifizierte Z6–Z13-PMTiles ist 39.630.942 Bytes groß.
+
+### Wofür die Hierarchie weiterhin gebraucht wird
+
+Ein globales oder sehr großes europäisches Gebiet kann nicht pauschal auf Z13
+gerechnet werden. Die bestehende Hierarchie bleibt deshalb relevant für:
+
+- Zerlegung in ausreichend große Processing-Domains,
+- Parent-Thresholds als äußere Randbedingungen einer Domain,
+- Binnen-Domains ohne eigene Ocean-Seeds,
+- Konvergenztests für Domain-Ränder,
+- Fälle, in denen eine uniforme Domain RAM-/Disk-Grenzen überschreitet.
+
+Der wesentliche Unterschied ist: **Domain-Grenzen werden künftig nach
+Connectivity- und Ressourcenanforderungen gewählt und QA-geprüft; sie werden
+nicht automatisch mit einer DEM-Source-Coverage gleichgesetzt.**
+
+## Historischer validierter Hierarchie-Stand
+
+Der erste vollständige hierarchische Phase-1C-Pilot funktioniert weiterhin als
+Referenz und Vergleich:
 
 `Mapterhorn Coverage → Z11 Base → AHN Z12 + Collar + Halo → Parent-Boundary → Fine Priority Flood → Composite → Z6–Z12-Pyramide → PMTiles`
 
@@ -394,9 +465,7 @@ An der echten Refinement-Seam wurden 76.588 Randpixel geprüft:
 Das V2-PMTiles ist 15.125.875 Bytes groß, umfasst Z6–Z12 und wurde mit
 `go-pmtiles verify` erfolgreich geprüft.
 
-Nächste Schritte:
-
-1. V2 in der Kartensammlung visuell testen, besonders 0–2 m und 4,75–5 m,
-2. Z11/Z12/Z13 unter dem V2-Klassenschema erneut benchmarken,
-3. daraus die automatische Coverage→Processing-Zoom-Regel ableiten,
-4. erst danach auf ein größeres Parent-Gebiet skalieren.
+Die damaligen nächsten Schritte sind inzwischen durchgeführt. Der Z11/Z12/Z13-
+Benchmark führte zur Z13-Empfehlung für AHN5; die anschließenden Seam- und
+Uniform-Domain-Tests führten zum oben beschriebenen bevorzugten regionalen
+Processing-Domain-Modell.

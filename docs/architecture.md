@@ -107,9 +107,25 @@ Mapterhorn ist für die Kartensammlung besonders attraktiv, weil:
 - PMTiles-Downloads und Gebietsextrakte unterstützt werden,
 - zahlreiche Regionen zusätzlich höher aufgelöste offene DEMs besitzen.
 
-Für die globale V2 sollte dennoch bewusst nur eine klar definierte Basisauflösung
-verwendet werden. Hochauflösende regionale Verfeinerungen kommen als eigener
-zweiter Schritt.
+Für große Produktionsgebiete bleibt eine klar definierte globale Basis wichtig.
+Hochauflösende regionale Daten werden jedoch bevorzugt nicht mehr als separat
+gelöste Thresholdfelder exakt an ihrer Source-Coverage zusammengesetzt.
+
+Der westliche Niederlande-Z13-Pilot hat stattdessen den Ansatz der
+**uniformen Processing-Domain** validiert:
+
+1. Coverage und native Source-Auflösung bestimmen, ob ein höherer
+   Processing-Zoom fachlich sinnvoll ist.
+2. Für eine zusammenhängende Processing-Domain wird ein gemeinsamer
+   Processing-Zoom gewählt.
+3. Innerhalb dieses Rasters wird jeweils das bestverfügbare DEM verwendet.
+4. Fehlt ein High-Resolution-Tile, wird ein gröberer Mapterhorn-Parent geometrisch
+   korrekt auf dasselbe Raster überzoomt.
+5. Danach läuft ein einziger Priority Flood über die gesamte Domain.
+
+Das Overzoomen erhöht nur die Abtastdichte des gemeinsamen Graphen. Es erzeugt
+keine zusätzliche reale Geländeinformation und muss in den Metadaten als
+Fallback gekennzeichnet werden.
 
 Wichtig: Mapterhorn kombiniert verschiedene offene Datenquellen. Vor einer
 öffentlichen Veröffentlichung des abgeleiteten Threshold-Datensatzes muss die
@@ -148,8 +164,15 @@ Anforderungen:
 - Übergänge zur globalen Basis werden geprüft.
 
 Die regionale Verfeinerung darf nicht einfach einen hochauflösenden Ausschnitt
-unabhängig flood-fillen. Die Meer-Konnektivität muss mit dem umgebenden Modell
+unabhängig flood-fillen und anschließend hart mit einem gröberen Thresholdfeld
+zusammengesetzt werden. Die Meer-Konnektivität muss mit dem umgebenden Modell
 konsistent bleiben.
+
+Bevorzugt wird deshalb eine ausreichend große uniforme Processing-Domain, in der
+feine und gröbere DEM-Bereiche **vor** dem Flood auf einem gemeinsamen Raster
+zusammengeführt werden. Die bestehende Parent-/Boundary-Methode bleibt für
+spätere Domain-Zerlegung erhalten, wenn eine zusammenhängende Domain aus
+Ressourcengründen nicht mehr in einem Lauf berechnet werden kann.
 
 ## Vertikales Datum
 
@@ -219,12 +242,27 @@ Zellen deutlich oberhalb dieses Grenzwerts können als Barrieren behandelt werde
 Ein Weg, der über >70 m führen müsste, kann innerhalb des aktuellen Sliders ohnehin
 nie relevant werden.
 
-### Arbeitsraster
+### Arbeitsraster und Processing-Domains
 
-Die Berechnung erfolgt in der nativen oder bewusst festgelegten Basisauflösung des
-DEM, nicht in einer künstlich höher aufgelösten Web-Mercator-Zoomstufe.
+Die Berechnung erfolgt auf einer bewusst festgelegten Arbeitsauflösung. Eine
+Web-Mercator-Zoomstufe darf dafür als reproduzierbares Raster verwendet werden,
+wenn ihre Bodenauflösung fachlich zur Zielquelle passt.
 
-Webkarten-Zoomstufen sind Ausgabeformat, nicht Berechnungsauflösung.
+Wichtig ist die Trennung zwischen:
+
+- **realer DEM-Auflösung** – welche Geländeinformation tatsächlich vorhanden ist,
+- **Processing-Auflösung** – auf welchem gemeinsamen Graphen der Priority Flood
+  gerechnet wird,
+- **Ausgabezoom** – welche Zoomstufen später im PMTiles stehen.
+
+Ein gröberes Parent-DEM darf auf ein feineres Processing-Raster überzoomt werden,
+um einen durchgehenden Graphen zu erhalten. Dadurch entsteht keine neue
+Geländeinformation; die effektive Genauigkeit bleibt die des Parent-DEMs.
+
+Der westliche Niederlande-Pilot verwendet beispielsweise eine uniforme
+Z13-Processing-Domain. Echte Z13-Terrain-Tiles werden verwendet, wo Mapterhorn sie
+liefert; fehlende Land-Tiles werden aus der globalen Z12-Basis überzoomt. Danach
+wird die gesamte Domain in einem einzigen Flood gelöst.
 
 ### Skalierung
 
@@ -245,7 +283,8 @@ Nicht verwenden:
 
 - unabhängiger Flood-Fill pro XYZ-Tile,
 - unabhängiger Flood-Fill pro Viewport,
-- Regionstiles ohne globale Randbedingungen.
+- harte Threshold-Merges exakt an DEM-Source-Coverages,
+- Processing-Domains ohne fachlich kontrollierte Randbedingungen.
 
 ## Zwischenprodukt
 
@@ -478,9 +517,12 @@ Nach erfolgreichem Nordsee-Pilot:
 
 Erst wenn die reale Größe und Performance aus Phase 1 und 2 bekannt sind.
 
-### Phase 4 – Regionale High-Resolution-Verfeinerungen
+### Phase 4 – Regionale High-Resolution-Processing-Domains
 
 Nur für Regionen mit geeigneten offenen DTM-Daten und sauberem vertikalem Datum.
+
+Coverage bestimmt dabei die sinnvolle Zielauflösung und DEM-Qualität, nicht
+automatisch die Grenze eines separat gelösten Thresholdfelds.
 
 ## Nächste konkrete Aufgabe
 
