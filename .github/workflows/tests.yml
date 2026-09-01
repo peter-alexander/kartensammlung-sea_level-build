@@ -33,11 +33,15 @@ jobs:
           g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
             src/candidate_mask_70.cpp \
             -o build/candidate_mask_70
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/candidate_land_components.cpp \
+            -o build/candidate_land_components
 
       - name: Run reference comparison
         run: |
           python tests/test_quantized_priority_flood.py
           python tests/test_candidate_mask_70.py
+          python tests/test_candidate_land_components.py
           python tests/test_conservative_candidate.py
           python tests/test_threshold_pyramid.py
           python tests/test_refinement_boundary.py
