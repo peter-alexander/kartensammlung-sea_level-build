@@ -33,6 +33,11 @@ def process_adaptive_work_region(
 	domain_pixels=512,
 	max_solver_runs=1000000,
 	adaptive_plan_path=None,
+	checkpoint_path=None,
+	checkpoint_every_runs=0,
+	resume=False,
+	max_runs_this_invocation=0,
+	write_outputs_during_convergence=True,
 ):
 	parent_meta = json.loads(
 		Path(parent_grid).read_text(encoding="utf-8")
@@ -89,6 +94,15 @@ def process_adaptive_work_region(
 			solver,
 			levels,
 			max_solver_runs=max_solver_runs,
+			checkpoint_path=checkpoint_path,
+			checkpoint_every_runs=checkpoint_every_runs,
+			resume=resume,
+			max_runs_this_invocation=(
+				max_runs_this_invocation
+			),
+			write_outputs_during_convergence=(
+				write_outputs_during_convergence
+			),
 		)
 	finally:
 		materializer.close()
@@ -155,6 +169,22 @@ def main():
 	parser.add_argument("--workers", type=int, default=8)
 	parser.add_argument("--domain-pixels", type=int, default=512)
 	parser.add_argument("--adaptive-plan")
+	parser.add_argument("--checkpoint")
+	parser.add_argument(
+		"--checkpoint-every-runs",
+		type=int,
+		default=0,
+	)
+	parser.add_argument("--resume", action="store_true")
+	parser.add_argument(
+		"--max-runs-this-invocation",
+		type=int,
+		default=0,
+	)
+	parser.add_argument(
+		"--final-output-after-convergence",
+		action="store_true",
+	)
 	parser.add_argument(
 		"--max-solver-runs",
 		type=int,
@@ -180,6 +210,17 @@ def main():
 		domain_pixels=args.domain_pixels,
 		max_solver_runs=args.max_solver_runs,
 		adaptive_plan_path=args.adaptive_plan,
+		checkpoint_path=args.checkpoint,
+		checkpoint_every_runs=(
+			args.checkpoint_every_runs
+		),
+		resume=args.resume,
+		max_runs_this_invocation=(
+			args.max_runs_this_invocation
+		),
+		write_outputs_during_convergence=(
+			not args.final_output_after_convergence
+		),
 	)
 
 	print(json.dumps(result, indent=2))
