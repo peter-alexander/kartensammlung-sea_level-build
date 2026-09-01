@@ -1,0 +1,608 @@
+name: Temporary real work region end to end
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-real-work-region-e2e.yml
+
+permissions:
+  contents: write
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow rasterio Fiona shapely mapbox-vector-tile
+
+      - name: Build tools
+        run: |
+          mkdir -p build tmp/real-work-region cache tmp/ocean-source
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/candidate_mask_70.cpp \
+            -o build/candidate_mask_70
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/candidate_land_components.cpp \
+            -o build/candidate_land_components
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_quantized.cpp \
+            -o build/priority_flood_quantized
+
+          g++ -O3 -std=c++20 -Wall -Wextra -pedantic \
+            src/priority_flood_land_mask.cpp \
+            -o build/priority_flood_land_mask
+
+      - name: Prepare parent Z11 DEM
+        run: |
+          python scripts/prepare_phase1a_dem.py \
+            --config config/candidate_benchmark_north_adriatic_alps_z11.json \
+            --cache-dir cache \
+            --work-dir tmp/real-work-region/parent \
+            --workers 12
+
+      - name: Download ocean polygons
+        run: |
+          curl -fL --retry 3 --retry-delay 5 \
+            -o cache/water-polygons-split-3857.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+
+          unzip -j cache/water-polygons-split-3857.zip \
+            '*.shp' '*.shx' '*.dbf' '*.prj' '*.cpg' \
+            -d tmp/ocean-source
+
+      - name: Rasterize parent sea mask
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import fiona
+          import numpy as np
+          from affine import Affine
+          from rasterio.features import rasterize
+
+          root = Path("tmp/real-work-region")
+          grid = json.loads(
+              (root / "parent/grid.json").read_text()
+          )["grid"]
+          shp = next(Path("tmp/ocean-source").glob("*.shp"))
+
+          bounds = (
+              float(grid["left"]),
+              float(grid["bottom"]),
+              float(grid["right"]),
+              float(grid["top"]),
+          )
+          with fiona.open(shp) as source:
+              geometries = [
+                  feature["geometry"]
+                  for feature in source.filter(bbox=bounds)
+                  if feature["geometry"] is not None
+              ]
+
+          transform = Affine(
+              float(grid["resolution"]),
+              0.0,
+              float(grid["left"]),
+              0.0,
+              -float(grid["resolution"]),
+              float(grid["top"]),
+          )
+          sea = rasterize(
+              ((geometry, 1) for geometry in geometries),
+              out_shape=(
+                  int(grid["height"]),
+                  int(grid["width"]),
+              ),
+              fill=0,
+              transform=transform,
+              dtype=np.uint8,
+          )
+          sea.tofile(root / "parent/sea_mask.u8")
+          print({
+              "sea_cells": int(np.count_nonzero(sea)),
+              "cells": int(sea.size),
+          })
+          PY
+
+      - name: Build factor 16 work regions with RLE
+        run: |
+          eval "$(
+            python - tmp/real-work-region/parent/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          mkdir -p tmp/real-work-region/coarse
+
+          python scripts/build_conservative_candidate_coarse.py \
+            --elevation tmp/real-work-region/parent/elevation.f32 \
+            --sea-mask tmp/real-work-region/parent/sea_mask.u8 \
+            --output-elevation tmp/real-work-region/coarse/elevation.f32 \
+            --output-sea-mask tmp/real-work-region/coarse/sea.u8 \
+            --report tmp/real-work-region/coarse/coarse.json \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --factor 16
+
+          eval "$(
+            python - tmp/real-work-region/coarse/coarse.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path(sys.argv[1]).read_text())
+          print(
+              "COARSE_WIDTH="
+              + shlex.quote(str(report["coarse_width"]))
+          )
+          print(
+              "COARSE_HEIGHT="
+              + shlex.quote(str(report["coarse_height"]))
+          )
+          PY
+          )"
+
+          build/candidate_mask_70 \
+            --elevation tmp/real-work-region/coarse/elevation.f32 \
+            --sea-mask tmp/real-work-region/coarse/sea.u8 \
+            --output tmp/real-work-region/coarse/candidate.bit \
+            --report tmp/real-work-region/coarse/candidate.json \
+            --width "$COARSE_WIDTH" \
+            --height "$COARSE_HEIGHT" \
+            --max-level 70
+
+          build/candidate_land_components \
+            --candidate-mask tmp/real-work-region/coarse/candidate.bit \
+            --sea-mask tmp/real-work-region/coarse/sea.u8 \
+            --report tmp/real-work-region/coarse/components.json \
+            --spans-output tmp/real-work-region/coarse/components.rle \
+            --width "$COARSE_WIDTH" \
+            --height "$COARSE_HEIGHT"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "tmp/real-work-region/coarse/components.json"
+              ).read_text()
+          )
+          component = next(
+              item
+              for item in report["components"]
+              if int(item["id"]) == 16
+          )
+          print(json.dumps(component, indent=2))
+          if int(component["cells"]) != 1:
+              raise RuntimeError(
+                  "Der bekannte Pilot erwartet Component 16 "
+                  "mit genau einer Faktor-16-Zelle."
+              )
+          if int(component["span_count"]) <= 0:
+              raise RuntimeError("RLE-Spans wurden nicht geschrieben.")
+          PY
+
+      - name: Convert real RLE component to work region
+        run: |
+          python scripts/prepare_candidate_work_region.py \
+            --components-report tmp/real-work-region/coarse/components.json \
+            --spans tmp/real-work-region/coarse/components.rle \
+            --grid tmp/real-work-region/parent/grid.json \
+            --component-id 16 \
+            --factor 16 \
+            --halo-coarse-cells 1 \
+            --output-geojson tmp/real-work-region/work-region.geojson \
+            --output-report tmp/real-work-region/work-region.json
+
+          cat tmp/real-work-region/work-region.json
+
+      - name: Plan source fidelity from actual component geometry
+        run: |
+          python scripts/plan_work_region.py \
+            --work-geojson tmp/real-work-region/work-region.geojson \
+            --output-dir tmp/real-work-region/plan \
+            --coverage-zoom 8 \
+            --coverage-context-tiles 1 \
+            --cache-dir cache \
+            --workers 12 \
+            --max-uniform-cells 10000000
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan = json.loads(
+              Path("tmp/real-work-region/plan/plan.json").read_text()
+          )
+          print(json.dumps(plan, indent=2))
+
+          sources = {
+              item["source"]
+              for item in plan["coverage"]["effective_sources"]
+          }
+          if "si" not in sources:
+              raise RuntimeError(
+                  "Bekannte reale Work Region muss si-Coverage treffen."
+              )
+          if plan["uniform_processing_zoom"] != 16:
+              raise RuntimeError(
+                  "1-m-si-Coverage muss Source-Fidelity Z16 auslösen."
+              )
+          if plan["requires_work_region_split"]:
+              raise RuntimeError(
+                  "Dieser kleine Pilot darf keinen Work-Region-Split brauchen."
+              )
+          PY
+
+      - name: Materialize source fidelity DEM
+        run: |
+          mkdir -p tmp/real-work-region/fine
+
+          /usr/bin/time -v \
+            python scripts/prepare_phase1a_dem.py \
+              --config tmp/real-work-region/plan/dem-config.json \
+              --cache-dir cache \
+              --work-dir tmp/real-work-region/fine \
+              --workers 12 \
+            2>&1 | tee tmp/real-work-region/fine/dem.log
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          meta = json.loads(
+              Path("tmp/real-work-region/fine/grid.json").read_text()
+          )
+          if meta["dem"]["missing_tile_count"] != 0:
+              raise RuntimeError("Highres-DEM enthält Lücken.")
+          print(json.dumps(meta["grid"], indent=2))
+          PY
+
+      - name: Rasterize fine sea mask
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import fiona
+          import numpy as np
+          from affine import Affine
+          from rasterio.features import rasterize
+
+          root = Path("tmp/real-work-region")
+          grid = json.loads(
+              (root / "fine/grid.json").read_text()
+          )["grid"]
+          shp = next(Path("tmp/ocean-source").glob("*.shp"))
+          bounds = (
+              float(grid["left"]),
+              float(grid["bottom"]),
+              float(grid["right"]),
+              float(grid["top"]),
+          )
+
+          with fiona.open(shp) as source:
+              geometries = [
+                  feature["geometry"]
+                  for feature in source.filter(bbox=bounds)
+                  if feature["geometry"] is not None
+              ]
+
+          transform = Affine(
+              float(grid["resolution"]),
+              0.0,
+              float(grid["left"]),
+              0.0,
+              -float(grid["resolution"]),
+              float(grid["top"]),
+          )
+          sea = rasterize(
+              ((geometry, 1) for geometry in geometries),
+              out_shape=(
+                  int(grid["height"]),
+                  int(grid["width"]),
+              ),
+              fill=0,
+              transform=transform,
+              dtype=np.uint8,
+          )
+          sea.tofile(root / "fine/sea_mask.u8")
+
+          if np.count_nonzero(sea) == 0:
+              raise RuntimeError("Fine-Region enthält keine Sea-Seeds.")
+          PY
+
+      - name: Build reference and exact candidate
+        run: |
+          eval "$(
+            python - tmp/real-work-region/fine/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          build/priority_flood_quantized \
+            --elevation tmp/real-work-region/fine/elevation.f32 \
+            --sea-mask tmp/real-work-region/fine/sea_mask.u8 \
+            --output tmp/real-work-region/fine/reference.u8 \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
+            --connectivity 4
+
+          build/candidate_mask_70 \
+            --elevation tmp/real-work-region/fine/elevation.f32 \
+            --sea-mask tmp/real-work-region/fine/sea_mask.u8 \
+            --output tmp/real-work-region/fine/candidate-full.bit \
+            --report tmp/real-work-region/fine/candidate-full.json \
+            --width "$WIDTH" \
+            --height "$HEIGHT" \
+            --max-level 70
+
+      - name: Restrict exact candidate to selected coarse component
+        run: |
+          python scripts/mask_candidate_to_work_region.py \
+            --candidate-mask tmp/real-work-region/fine/candidate-full.bit \
+            --output tmp/real-work-region/fine/candidate-core.bit \
+            --components-report tmp/real-work-region/coarse/components.json \
+            --spans tmp/real-work-region/coarse/components.rle \
+            --component-id 16 \
+            --parent-grid tmp/real-work-region/parent/grid.json \
+            --fine-grid tmp/real-work-region/fine/grid.json \
+            --coarse-factor 16
+
+          cat tmp/real-work-region/fine/candidate-core.bit.report.json
+
+      - name: Split exact core into components
+        run: |
+          eval "$(
+            python - tmp/real-work-region/fine/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          build/candidate_land_components \
+            --candidate-mask tmp/real-work-region/fine/candidate-core.bit \
+            --sea-mask tmp/real-work-region/fine/sea_mask.u8 \
+            --report tmp/real-work-region/fine/components.json \
+            --spans-output tmp/real-work-region/fine/components.rle \
+            --width "$WIDTH" \
+            --height "$HEIGHT"
+
+      - name: Process exact components serially
+        run: |
+          eval "$(
+            python - tmp/real-work-region/fine/grid.json <<'PY'
+          import json
+          import shlex
+          import sys
+          from pathlib import Path
+
+          grid = json.loads(Path(sys.argv[1]).read_text())["grid"]
+          print(f"WIDTH={shlex.quote(str(grid['width']))}")
+          print(f"HEIGHT={shlex.quote(str(grid['height']))}")
+          PY
+          )"
+
+          python scripts/process_candidate_components.py \
+            --components-report tmp/real-work-region/fine/components.json \
+            --spans tmp/real-work-region/fine/components.rle \
+            --elevation tmp/real-work-region/fine/elevation.f32 \
+            --sea-mask tmp/real-work-region/fine/sea_mask.u8 \
+            --output tmp/real-work-region/fine/serial.u8 \
+            --work-dir tmp/real-work-region/fine/component-work \
+            --solver build/priority_flood_land_mask \
+            --levels "$(python scripts/threshold_levels.py --csv)" \
+            --global-width "$WIDTH" \
+            --global-height "$HEIGHT" \
+            --halo 1 \
+            --max-direct-window-cells 1000000 \
+            --domain-solver build/priority_flood_quantized \
+            --domain-width 1024 \
+            --domain-height 1024 \
+            > tmp/real-work-region/fine/serial.json
+
+      - name: Compare selected work region with reference
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import numpy as np
+
+          root = Path("tmp/real-work-region")
+          grid = json.loads(
+              (root / "fine/grid.json").read_text()
+          )["grid"]
+          shape = (
+              int(grid["height"]),
+              int(grid["width"]),
+          )
+          cells = int(grid["cells"])
+
+          packed = np.fromfile(
+              root / "fine/candidate-core.bit",
+              dtype=np.uint8,
+          )
+          core = np.unpackbits(
+              packed,
+              bitorder="little",
+          )[:cells].reshape(shape).astype(bool)
+
+          reference = np.memmap(
+              root / "fine/reference.u8",
+              dtype=np.uint8,
+              mode="r",
+              shape=shape,
+          )
+          serial = np.memmap(
+              root / "fine/serial.u8",
+              dtype=np.uint8,
+              mode="r",
+              shape=shape,
+          )
+
+          levels = (
+              __import__("subprocess")
+              .check_output(
+                  [
+                      "python",
+                      "scripts/threshold_levels.py",
+                      "--csv",
+                  ],
+                  text=True,
+              )
+              .strip()
+              .split(",")
+          )
+          sentinel = len(levels)
+
+          differing = int(
+              np.count_nonzero(
+                  serial[core] != reference[core]
+              )
+          )
+          outside = int(
+              np.count_nonzero(
+                  serial[~core] != sentinel
+              )
+          )
+          components = json.loads(
+              (root / "fine/components.json").read_text()
+          )
+          work_region = json.loads(
+              (root / "work-region.json").read_text()
+          )
+          plan = json.loads(
+              (root / "plan/plan.json").read_text()
+          )
+          core_report = json.loads(
+              (
+                  root
+                  / "fine/candidate-core.bit.report.json"
+              ).read_text()
+          )
+          serial_report = json.loads(
+              (root / "fine/serial.json").read_text()
+          )
+
+          summary = {
+              "coarse_work_region": work_region,
+              "source_fidelity": {
+                  "zoom": plan["uniform_processing_zoom"],
+                  "effective_sources": (
+                      plan["coverage"]["effective_sources"]
+                  ),
+              },
+              "fine_grid": grid,
+              "core_filter": core_report,
+              "exact_components": {
+                  "component_count": components["component_count"],
+                  "land_candidate_cells": (
+                      components["land_candidate_cells"]
+                  ),
+                  "largest_component_cells": (
+                      components["largest_component_cells"]
+                  ),
+              },
+              "serial": serial_report,
+              "comparison": {
+                  "candidate_core_differing_cells": differing,
+                  "outside_core_non_sentinel_cells": outside,
+                  "byte_equal_on_candidate_core": differing == 0,
+              },
+          }
+          (root / "summary.json").write_text(
+              json.dumps(summary, indent=2) + "\n"
+          )
+          print(json.dumps(summary, indent=2))
+
+          if core_report["output_candidate_cells"] <= 0:
+              raise AssertionError(
+                  "Reale grobe Work Region enthält keinen exakten Candidate."
+              )
+          if differing != 0:
+              raise AssertionError(
+                  f"{differing} Core-Zellen weichen von der Referenz ab."
+              )
+          if outside != 0:
+              raise AssertionError(
+                  f"{outside} Zellen außerhalb des Cores wurden geschrieben."
+              )
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-work-region-e2e
+          path: |
+            tmp/real-work-region/summary.json
+            tmp/real-work-region/work-region.json
+            tmp/real-work-region/work-region.geojson
+            tmp/real-work-region/plan/plan.json
+            tmp/real-work-region/plan/effective-sources.geojson
+            tmp/real-work-region/fine/grid.json
+            tmp/real-work-region/fine/candidate-full.json
+            tmp/real-work-region/fine/candidate-core.bit.report.json
+            tmp/real-work-region/fine/components.json
+            tmp/real-work-region/fine/serial.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase
+
+          if [ -f .github/workflows/tmp-real-work-region-e2e.yml ]; then
+            git rm .github/workflows/tmp-real-work-region-e2e.yml
+            git commit -m "Remove temporary real work region e2e"
+            git pull --rebase
+            git push
+          fi
