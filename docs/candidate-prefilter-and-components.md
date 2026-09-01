@@ -572,6 +572,182 @@ Der Pilot liegt allerdings nur auf `glo30` und damit Z11. Er beweist die reale
 lazy Mapterhorn-/Sea-/RLE-Kopplung und Domain-Konvergenz, aber **noch nicht die
 Skalierung einer großen Z14-/Z16-Work-Region**.
 
+## Adaptive Source-Fidelity innerhalb der großen Work Region
+
+Der Coverage-Scan aller 87 sicheren Faktor-16-Work-Regions zeigte, dass
+**nur Component 1** höhere Mapterhorn-Source-Fidelity als Z11 enthält.
+
+Component 1 umfasst 145.198 grobe Work-Region-Zellen. Eine uniforme
+Z16-Verarbeitung wäre daher trotz lazy RAM-Nutzung unnötig teuer:
+
+- uniform Z16: **38.062.784.512 Core-Zellen**,
+- ungefähr 145.198 einzelne 512-x-512-Domains.
+
+Der adaptive Planner
+`scripts/plan_adaptive_work_region_domains.py` weist deshalb jede sichere
+Faktor-16-Zelle der höchsten tatsächlich schneidenden Source-Fidelity zu.
+Die Faktor-16-Geometrie ist dafür besonders günstig, weil eine Grobzelle auf
+allen verwendeten Zooms ganzzahlig auf das Fine-Raster abbildet:
+
+- Z11: 16 x 16 Fine-Zellen,
+- Z13: 64 x 64,
+- Z14: 128 x 128,
+- Z16: 512 x 512.
+
+Für Component 1 ergibt der reale Plan:
+
+| Zoom | grobe Zellen | 512er Domains |
+| ---: | ---: | ---: |
+| Z11 | 14.248 | 1.939 |
+| Z13 | 114.317 | 8.410 |
+| Z14 | 15.247 | 2.116 |
+| Z16 | 1.386 | 1.386 |
+| **gesamt** | **145.198** | **13.851** |
+
+Die Quellenverteilung ist:
+
+- Z16: 1.386 Zellen `si`,
+- Z14: 15.132 Zellen `itlombardia` plus 115 `ittrentino`,
+- Z13: 114.317 Zellen `tinitaly`,
+- Z11: 14.248 Zellen `glo30`.
+
+Damit sinkt die geplante Zahl tatsächlich zu verarbeitender Core-Zellen auf
+**1.085.028.352**. Gegenüber uniform Z16 ist das eine Reduktion um Faktor
+**35,08**.
+
+### Multi-Resolution-Randkopplung
+
+`scripts/process_adaptive_lazy_domains.py` koppelt unterschiedlich
+aufgelöste Domains weiterhin als **einen gemeinsamen Minimax-Graphen**.
+
+An einer gemeinsamen physischen Kante gilt:
+
+- Fine -> Coarse:
+  Minimum aller Fine-Thresholds, die dieselbe grobe Randzelle überdecken,
+- Coarse -> Fine:
+  groben Threshold auf alle überdeckten Fine-Randzellen replizieren.
+
+Der lokale Priority-Flood wendet danach weiterhin seine normale
+Minimax-Regel mit der lokalen Höhenklasse an.
+
+Source-Grenzen werden dadurch ausdrücklich **nicht** zu fachlichen
+Threshold-Grenzen.
+
+### Interne Sea-Ränder
+
+Ein weiterer realer Test zeigte, dass der 1-Pixel-Sea-Halo nur an einem
+tatsächlich offenen Work-Region-Rand als direkter Sea-Seed benutzt werden darf.
+
+An einer internen Z11/Z13/Z14/Z16-Domainkante erfolgt die Verbindung
+ausschließlich über die Nachbardomain. Andernfalls könnten zwei
+unterschiedlich aufgelöste Rasterisierungen derselben Küstenlinie unabhängig
+Sea-Seeds erzeugen.
+
+Der Solver maskiert deshalb External-Sea auf allen internen
+Domainüberlappungen.
+
+### Realer Z11-Z16-Referenztest
+
+Die vollständige adaptive Kette wurde an einer echten Küstenkante von
+Component 1 getestet:
+
+- eine Z11-Domain, 16 x 16 Zellen,
+- direkt benachbart eine Z16-Domain, 512 x 512 Zellen,
+- Auflösungsverhältnis an derselben physischen Kante: **32:1**.
+
+Für die unabhängige Referenz wurde die Z11-Domain exakt 32-fach auf das
+Z16-Gitter expandiert und mit der realen Z16-Domain zu einem
+512 x 1.024 großen globalen QA-Graphen zusammengesetzt.
+
+Ergebnis:
+
+- 524.288 expandierte Referenzzellen,
+- 2 adaptive Domains,
+- 1 Multi-Resolution-Adjacency,
+- 3 Solver-Läufe,
+- 528 verbesserte Randthresholds,
+- 140 externe Sea-Verbesserungen,
+- 528 interne Randpixel korrekt von External-Sea ausgeschlossen,
+- Peak-Materialisierung: 262.144 Zellen,
+- **0 abweichende Zellen**,
+- damit bytegleich mit dem globalen expandierten Referenzgraphen.
+
+Dieser Test validiert insbesondere die extreme reale Z11-Z16-Kopplung und
+damit auch die weniger großen Z13-Z14-/Z14-Z16-Verhältnisse.
+
+## Tile-Prefetch und 128-Domain-Benchmark
+
+Der adaptive Component-1-Plan erzeugt 24.502 Domain-Tile-Referenzen, aber nur
+**4.615 eindeutige Mapterhorn-ZXY-Tiles**:
+
+- Z11: 91,
+- Z13: 2.064,
+- Z14: 1.074,
+- Z16: 1.386.
+
+`scripts/prefetch_adaptive_mapterhorn.py` dedupliziert diese Requests und
+kann die benötigten Tiles inklusive HTTP-Parent-Fallback vor der
+Domainkonvergenz in den lokalen Cache laden.
+
+Ein zusammenhängender realer 128-Domain-Ausschnitt um die validierte
+Z11-Z16-Kante ergab:
+
+- 60 Z11-Domains,
+- 68 Z16-Domains,
+- 18.046.720 initiale Fine-Zellen,
+- 148 Tile-Referenzen, aber nur **74 eindeutige Tiles**.
+
+Prefetch:
+
+- 6,04 s,
+- 96.316 KiB Peak-RSS,
+- 0 fehlende bzw. ungelöste Tiles.
+
+Adaptive Konvergenz mit warmem Cache:
+
+- 128 Domains,
+- 200 Nachbarschaften,
+- **416 Solver-Läufe / Materialisierungen**,
+- 268.398 verbesserte Randthresholds,
+- 8.630 externe Sea-Verbesserungen,
+- 132.288 interne Randpixel von External-Sea ausgeschlossen,
+- maximal 262.144 Zellen gleichzeitig materialisiert,
+- 37,52 s Laufzeit,
+- **183.464 KiB Peak-RSS**,
+- alle temporären Domain-Daten nach jedem Lauf gelöscht.
+
+Der Sample-Faktor von 3,25 Solver-Läufen pro geplanter Domain darf nicht
+blind auf Component 1 hochgerechnet werden: der Vollplan besteht überwiegend
+aus kleineren Z13-/Z14-Domains. Er zeigt aber, dass das RAM-Ziel auch mit
+realer Multi-Resolution-Konvergenz stabil bleibt.
+
+## Checkpoint und Resume
+
+Der adaptive Solver kann seinen Konvergenzzustand inzwischen atomar
+checkpointen.
+
+Gespeichert werden:
+
+- komplette Pending-Queue,
+- alle eingehenden Randthresholds,
+- Run-Zähler und bekannte Landzellzahlen pro Domain,
+- kumulierte Solver-/Materialisierungs-/Boundary-Counter,
+- eine Signatur aus Domainplan und Threshold-Klassen.
+
+Ein Checkpoint mit einem anderen Domainplan oder anderen Threshold-Klassen
+wird abgelehnt.
+
+Für robuste lange Läufe kann die Konvergenz außerdem **ohne laufende
+Threshold-Endausgabe** erfolgen. Nach vollständiger Konvergenz wird jede
+Domain genau einmal mit den stabilen Randwerten final materialisiert und in
+die sparse Ausgabe geschrieben. Dadurch genügt für einen Neustart der kleine
+Checkpoint; bereits erzeugte große Threshold-Dateien müssen während der
+Konvergenz nicht als Resume-Zustand konserviert werden.
+
+Der Referenztest pausiert einen laufenden Multi-Resolution-Solver nach wenigen
+Runs, startet ihn aus dem Checkpoint neu und vergleicht die finalen sparse
+Domain-Dateien mit einem ununterbrochenen Lauf.
+
 ## Aktueller Produktionspfad
 
 Der geplante reguläre Ablauf ist jetzt:
