@@ -3,9 +3,13 @@
 import argparse
 import concurrent.futures
 import gzip
+import http.client
 import io
 import json
+import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -33,30 +37,91 @@ def tile_url(zoom, x, y):
 	return MAPTERHORN_TEMPLATE.format(z=zoom, x=x, y=y)
 
 
-def download_tile(url, path):
+def download_tile(
+	url,
+	path,
+	*,
+	max_attempts=3,
+	retry_delay_seconds=1.0,
+):
 	path = Path(path)
 	path.parent.mkdir(parents=True, exist_ok=True)
 
 	if path.exists() and path.stat().st_size > 0:
 		return "cached"
 
-	request = urllib.request.Request(
-		url,
-		headers={"User-Agent": "Kartensammlung-SeaLevel-Build/1.0"},
+	max_attempts = int(max_attempts)
+	if max_attempts <= 0:
+		raise ValueError("max_attempts muss > 0 sein.")
+
+	part_path = path.with_name(
+		path.name
+		+ f".part-{os.getpid()}-{threading.get_ident()}"
 	)
+	last_error = None
 
-	try:
-		with urllib.request.urlopen(
-			request,
-			timeout=60,
-		) as response, path.open("wb") as target:
-			target.write(response.read())
-	except urllib.error.HTTPError as error:
-		if error.code == 404:
-			return "missing"
-		raise
+	for attempt in range(1, max_attempts + 1):
+		part_path.unlink(missing_ok=True)
+		request = urllib.request.Request(
+			url,
+			headers={
+				"User-Agent": (
+					"Kartensammlung-SeaLevel-Build/1.0"
+				)
+			},
+		)
 
-	return "downloaded"
+		try:
+			with urllib.request.urlopen(
+				request,
+				timeout=60,
+			) as response:
+				data = response.read()
+
+			if not data:
+				raise IOError(
+					f"Leere Tile-Antwort für {url}."
+				)
+
+			with part_path.open("wb") as target:
+				target.write(data)
+			os.replace(part_path, path)
+			return "downloaded"
+		except urllib.error.HTTPError as error:
+			if error.code == 404:
+				part_path.unlink(missing_ok=True)
+				return "missing"
+			if error.code not in (
+				408,
+				429,
+				500,
+				502,
+				503,
+				504,
+			):
+				part_path.unlink(missing_ok=True)
+				raise
+			last_error = error
+		except (
+			urllib.error.URLError,
+			http.client.IncompleteRead,
+			TimeoutError,
+			ConnectionError,
+		) as error:
+			last_error = error
+
+		part_path.unlink(missing_ok=True)
+		if attempt < max_attempts:
+			time.sleep(
+				float(retry_delay_seconds)
+				* attempt
+			)
+
+	if last_error is not None:
+		raise last_error
+	raise RuntimeError(
+		f"Tile-Download ohne Ergebnis: {url}"
+	)
 
 
 def download_task_set(tasks, workers, *, label_zoom=None):
