@@ -118,6 +118,81 @@ def test_internal_external_sea_is_ignored(tmp):
 		raise AssertionError(report)
 
 
+def test_boundary_blocked_by_local_elevation(tmp):
+	domains = [
+		{
+			"id": 1,
+			"zoom": 0,
+			"coarse_x0": 0,
+			"coarse_y0": 0,
+			"coarse_width": 1,
+			"coarse_height": 1,
+			"fine_pixels_per_coarse_cell": 1,
+			"fine_width": 1,
+			"fine_height": 1,
+		},
+		{
+			"id": 2,
+			"zoom": 0,
+			"coarse_x0": 1,
+			"coarse_y0": 0,
+			"coarse_width": 1,
+			"coarse_height": 1,
+			"fine_pixels_per_coarse_cell": 1,
+			"fine_width": 1,
+			"fine_height": 1,
+		},
+	]
+
+	def materialize(domain, domain_dir):
+		domain_id = int(domain["id"])
+		elevation = np.asarray(
+			[[0.0 if domain_id == 1 else 100.0]],
+			dtype=np.float32,
+		)
+		sea = np.asarray(
+			[[1 if domain_id == 1 else 0]],
+			dtype=np.uint8,
+		)
+		land = np.ones((1, 1), dtype=np.uint8)
+
+		elevation_path = domain_dir / "elevation.f32"
+		sea_path = domain_dir / "sea.u8"
+		land_path = domain_dir / "land.u8"
+		elevation.tofile(elevation_path)
+		sea.tofile(sea_path)
+		land.tofile(land_path)
+
+		return {
+			"elevation_path": str(elevation_path),
+			"sea_mask_path": str(sea_path),
+			"land_mask_path": str(land_path),
+		}
+
+	output = tmp / "blocked-output"
+	report = process_adaptive_lazy_domains(
+		domains,
+		materialize,
+		output,
+		tmp / "blocked-work",
+		ROOT / "build" / "priority_flood_quantized",
+		LEVELS,
+		initial_domain_ids=[1],
+	)
+
+	sentinel = len(LEVELS.split(","))
+	right = np.fromfile(
+		output / "r2-c0.u8",
+		dtype=np.uint8,
+	).reshape((1, 1))
+	if right.tolist() != [[sentinel]]:
+		raise AssertionError(right)
+	if report["solver_runs"] != 2:
+		raise AssertionError(report)
+	if report["boundary_improvements"] <= 0:
+		raise AssertionError(report)
+
+
 def main():
 	domain_specs = [
 		{
@@ -225,6 +300,7 @@ def main():
 	with tempfile.TemporaryDirectory() as tmp:
 		tmp = Path(tmp)
 		test_internal_external_sea_is_ignored(tmp)
+		test_boundary_blocked_by_local_elevation(tmp)
 		output_dir = tmp / "output"
 		work_dir = tmp / "work"
 
