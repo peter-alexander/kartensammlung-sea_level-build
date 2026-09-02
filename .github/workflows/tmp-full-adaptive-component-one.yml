@@ -107,7 +107,17 @@ jobs:
           path: tmp/component1/cache
           key: adaptive-component-one-mapterhorn-v1
 
-      - name: Restore previous run checkpoints
+      - name: Restore checkpoint from failed full run
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: component1-checkpoint-*
+          path: tmp/component1/resume
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33553500181
+
+      - name: Restore requested run checkpoints
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' }}
         uses: actions/download-artifact@v4
         with:
@@ -118,7 +128,7 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
 
       - name: Select newest restored checkpoint
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '') }}
         run: |
           checkpoint="$(
             find tmp/component1/resume -name checkpoint.npz -print \
