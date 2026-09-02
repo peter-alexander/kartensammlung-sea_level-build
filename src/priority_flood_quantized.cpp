@@ -267,9 +267,21 @@ static std::vector<std::uint8_t> computeThreshold(
 	}
 
 	if (seaSeedCount == 0 && boundarySeedCount == 0) {
-		throw std::runtime_error(
-			"Weder Sea-Maske noch Boundary-Threshold enthalten einen nutzbaren Seed."
+		std::fill(
+			threshold.begin(),
+			threshold.end(),
+			sentinel
 		);
+		std::cerr
+			<< "sea_seeds=0 boundary_seeds=0"
+			<< " processed=0 stale_entries=0"
+			<< " sentinel_or_disconnected="
+			<< threshold.size()
+			<< " disconnected="
+			<< threshold.size()
+			<< " no_usable_seed=1"
+			<< "\n";
+		return threshold;
 	}
 
 	std::size_t processed = 0;
