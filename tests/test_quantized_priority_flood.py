@@ -185,6 +185,39 @@ def test_boundary_seed_can_be_improved():
 	return result
 
 
+def test_blocked_boundary_has_no_usable_seed():
+	elevation = [
+		[100, 100, 100],
+		[100, 100, 100],
+	]
+	sea = [
+		[0, 0, 0],
+		[0, 0, 0],
+	]
+	boundary = [
+		[3, None, None],
+		[3, None, None],
+	]
+
+	result = assert_matches_reference(
+		"blocked_boundary_has_no_usable_seed",
+		elevation,
+		sea,
+		boundary,
+	)
+	if any(
+		value != SENTINEL_CLASS
+		for row in result["actual"]
+		for value in row
+	):
+		raise AssertionError(
+			"Über 70 m blockierte Boundary-Seeds müssen "
+			"eine vollständig unverbundene Domain ergeben."
+		)
+
+	return result
+
+
 def test_piecewise_levels():
 	elevation = [[0, 0.03, 1.84, 2.12, 4.88, 5.10, 21.0, 70.01]]
 	sea = [[1, 0, 0, 0, 0, 0, 0, 0]]
@@ -197,6 +230,7 @@ def main():
 		test_piecewise_levels(),
 		test_boundary_only(),
 		test_boundary_seed_can_be_improved(),
+		test_blocked_boundary_has_no_usable_seed(),
 	]
 
 	print(json.dumps({
