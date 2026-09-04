@@ -8,9 +8,22 @@ from pathlib import Path
 from process_adaptive_mapterhorn_work_region import (
 	process_adaptive_work_region,
 )
+from validate_adaptive_threshold_output import (
+	validate_adaptive_threshold_output,
+)
 
 
-def validate_final_output(plan, report, output_dir, checkpoint_path):
+def validate_final_output(
+	plan,
+	report,
+	output_dir,
+	checkpoint_path,
+	*,
+	levels_csv,
+	components_report_path,
+	spans_path,
+	parent_grid_path,
+):
 	solver = report["solver"]
 	output_dir = Path(output_dir)
 	threshold_dir = output_dir / "threshold-domains"
@@ -106,6 +119,63 @@ def validate_final_output(plan, report, output_dir, checkpoint_path):
 		})
 	if not solver["all_domain_work_deleted"]:
 		raise AssertionError(summary)
+
+	manifest_path = output_dir / "reconstruction-manifest.json"
+	deep_qa = validate_adaptive_threshold_output(
+		plan=plan,
+		threshold_dir=threshold_dir,
+		checkpoint_path=checkpoint_path,
+		levels_csv=levels_csv,
+		components_report_path=components_report_path,
+		spans_path=spans_path,
+		parent_grid_path=parent_grid_path,
+		manifest_output=manifest_path,
+	)
+	(output_dir / "adaptive-validation.json").write_text(
+		json.dumps(deep_qa, indent=2) + "\n",
+		encoding="utf-8",
+	)
+
+	summary.update({
+		"checkpoint_signature": deep_qa["checkpoint_signature"],
+		"sentinel_class": int(deep_qa["sentinel_class"]),
+		"sentinel_cells": int(
+			deep_qa["thresholds"]["sentinel_cells"]
+		),
+		"non_sentinel_cells": int(
+			deep_qa["thresholds"]["non_sentinel_cells"]
+		),
+		"zero_run_non_sentinel_cells": int(
+			deep_qa["thresholds"][
+				"zero_run_non_sentinel_cells"
+			]
+		),
+		"fixed_point_adjacency_count": int(
+			deep_qa["fixed_point"]["adjacency_count"]
+		),
+		"fixed_point_directed_edge_checks": int(
+			deep_qa["fixed_point"]["directed_edge_checks"]
+		),
+		"fixed_point_improvable_pixels": int(
+			deep_qa["fixed_point"]["improvable_pixels"]
+		),
+		"component_partition_missing_cells": int(
+			deep_qa["component_partition"]["missing_cells"]
+		),
+		"component_partition_overlap_cells": int(
+			deep_qa["component_partition"]["overlap_cells"]
+		),
+		"component_partition_extra_cells": int(
+			deep_qa["component_partition"]["extra_cells"]
+		),
+		"reconstruction_spatial_mapping_valid": bool(
+			deep_qa["reconstruction"]["spatial_mapping_valid"]
+		),
+		"reconstruction_manifest": str(manifest_path),
+		"validation_report": str(
+			output_dir / "adaptive-validation.json"
+		),
+	})
 
 	return summary
 
@@ -216,6 +286,10 @@ def main():
 			result,
 			args.output_dir,
 			args.checkpoint,
+			levels_csv=args.levels,
+			components_report_path=args.components_report,
+			spans_path=args.spans,
+			parent_grid_path=args.parent_grid,
 		)
 		status["final"] = final_summary
 		if args.final_summary:
