@@ -51,6 +51,7 @@ jobs:
           python tests/test_process_component_domains.py
           python tests/test_process_lazy_domains.py
           python tests/test_process_adaptive_lazy_domains.py
+          python tests/test_validate_adaptive_threshold_output.py
           python tests/test_priority_flood_land_mask.py
           python tests/test_conservative_candidate.py
           python tests/test_threshold_pyramid.py
