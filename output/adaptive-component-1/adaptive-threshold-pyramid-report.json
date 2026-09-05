@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "method": "adaptive-native-tier-pyramids-v1",
+  "component_id": 1,
+  "parent_zoom": 11,
+  "tile_size": 512,
+  "sentinel_class": 58,
+  "sentinel_m": 71.0,
+  "levels": "0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2,2.25,2.5,2.75,3,3.25,3.5,3.75,4,4.25,4.5,4.75,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,25,30,35,40,45,50,55,60,65,70",
+  "requested_minzoom": 5,
+  "tier_count": 4,
+  "native_zooms": [
+    11,
+    13,
+    14,
+    16
+  ],
+  "domain_count": 13851,
+  "native_input_cells": 1085028352,
+  "tile_count": 6359,
+  "png_bytes": 63557671,
+  "tiers": [
+    {
+      "native_zoom": 11,
+      "minzoom": 5,
+      "maxzoom": 11,
+      "domain_count": 1939,
+      "native_input_cells": 3647488,
+      "bounds": [
+        12.1343994140625,
+        43.96119063892025,
+        15.8917236328125,
+        45.78284835197676
+      ],
+      "zooms": [
+        {
+          "zoom": 11,
+          "candidate_tiles": 91,
+          "tiles": 91,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 1137879,
+          "covered_domain_pixels": 3647488
+        },
+        {
+          "zoom": 10,
+          "candidate_tiles": 39,
+          "tiles": 39,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 437750
+        },
+        {
+          "zoom": 9,
+          "candidate_tiles": 16,
+          "tiles": 16,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 156705
+        },
+        {
+          "zoom": 8,
+          "candidate_tiles": 10,
+          "tiles": 10,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 65095
+        },
+        {
+          "zoom": 7,
+          "candidate_tiles": 4,
+          "tiles": 4,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 24284
+        },
+        {
+          "zoom": 6,
+          "candidate_tiles": 2,
+          "tiles": 2,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 9100
+        },
+        {
+          "zoom": 5,
+          "candidate_tiles": 1,
+          "tiles": 1,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 3691
+        }
+      ],
+      "tile_count": 163,
+      "png_bytes": 1834504,
+      "mbtiles": null,
+      "mbtiles_bytes": 1978368,
+      "pmtiles": "tmp/component1-output/sea-level-threshold-component-1-z11.pmtiles",
+      "pmtiles_bytes": 1835453
+    },
+    {
+      "native_zoom": 13,
+      "minzoom": 5,
+      "maxzoom": 13,
+      "domain_count": 8410,
+      "native_input_cells": 468242432,
+      "bounds": [
+        10.37109375,
+        43.96119063892025,
+        13.853759765625,
+        46.042735653846506
+      ],
+      "zooms": [
+        {
+          "zoom": 13,
+          "candidate_tiles": 2064,
+          "tiles": 2029,
+          "all_sentinel_tiles": 35,
+          "png_bytes": 21063701,
+          "covered_domain_pixels": 468242432
+        },
+        {
+          "zoom": 12,
+          "candidate_tiles": 561,
+          "tiles": 561,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 8113730
+        },
+        {
+          "zoom": 11,
+          "candidate_tiles": 164,
+          "tiles": 164,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 2842828
+        },
+        {
+          "zoom": 10,
+          "candidate_tiles": 52,
+          "tiles": 52,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 969663
+        },
+        {
+          "zoom": 9,
+          "candidate_tiles": 17,
+          "tiles": 17,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 324257
+        },
+        {
+          "zoom": 8,
+          "candidate_tiles": 7,
+          "tiles": 7,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 111193
+        },
+        {
+          "zoom": 7,
+          "candidate_tiles": 4,
+          "tiles": 4,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 41767
+        },
+        {
+          "zoom": 6,
+          "candidate_tiles": 4,
+          "tiles": 4,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 19759
+        },
+        {
+          "zoom": 5,
+          "candidate_tiles": 2,
+          "tiles": 2,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 8049
+        }
+      ],
+      "tile_count": 2840,
+      "png_bytes": 33494947,
+      "mbtiles": null,
+      "mbtiles_bytes": 35737600,
+      "pmtiles": "tmp/component1-output/sea-level-threshold-component-1-z13.pmtiles",
+      "pmtiles_bytes": 33449550
+    },
+    {
+      "native_zoom": 14,
+      "minzoom": 5,
+      "maxzoom": 14,
+      "domain_count": 2116,
+      "native_input_cells": 249806848,
+      "bounds": [
+        10.37109375,
+        44.89090425391709,
+        11.4422607421875,
+        45.89000815866183
+      ],
+      "zooms": [
+        {
+          "zoom": 14,
+          "candidate_tiles": 1074,
+          "tiles": 948,
+          "all_sentinel_tiles": 126,
+          "png_bytes": 4669971,
+          "covered_domain_pixels": 249806848
+        },
+        {
+          "zoom": 13,
+          "candidate_tiles": 257,
+          "tiles": 257,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 1722848
+        },
+        {
+          "zoom": 12,
+          "candidate_tiles": 75,
+          "tiles": 75,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 610530
+        },
+        {
+          "zoom": 11,
+          "candidate_tiles": 25,
+          "tiles": 25,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 217810
+        },
+        {
+          "zoom": 10,
+          "candidate_tiles": 9,
+          "tiles": 9,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 78240
+        },
+        {
+          "zoom": 9,
+          "candidate_tiles": 5,
+          "tiles": 5,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 32611
+        },
+        {
+          "zoom": 8,
+          "candidate_tiles": 3,
+          "tiles": 3,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 14609
+        },
+        {
+          "zoom": 7,
+          "candidate_tiles": 3,
+          "tiles": 3,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 9335
+        },
+        {
+          "zoom": 6,
+          "candidate_tiles": 3,
+          "tiles": 3,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 7046
+        },
+        {
+          "zoom": 5,
+          "candidate_tiles": 2,
+          "tiles": 2,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 4259
+        }
+      ],
+      "tile_count": 1330,
+      "png_bytes": 7367259,
+      "mbtiles": null,
+      "mbtiles_bytes": 8491008,
+      "pmtiles": "tmp/component1-output/sea-level-threshold-component-1-z14.pmtiles",
+      "pmtiles_bytes": 7079632
+    },
+    {
+      "native_zoom": 16,
+      "minzoom": 5,
+      "maxzoom": 16,
+      "domain_count": 1386,
+      "native_input_cells": 363331584,
+      "bounds": [
+        13.458251953125,
+        45.43700828867389,
+        13.88671875,
+        46.00840867976966
+      ],
+      "zooms": [
+        {
+          "zoom": 16,
+          "candidate_tiles": 1386,
+          "tiles": 1327,
+          "all_sentinel_tiles": 59,
+          "png_bytes": 13129989,
+          "covered_domain_pixels": 363331584
+        },
+        {
+          "zoom": 15,
+          "candidate_tiles": 438,
+          "tiles": 438,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 5004955
+        },
+        {
+          "zoom": 14,
+          "candidate_tiles": 149,
+          "tiles": 149,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 1742156
+        },
+        {
+          "zoom": 13,
+          "candidate_tiles": 61,
+          "tiles": 61,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 615635
+        },
+        {
+          "zoom": 12,
+          "candidate_tiles": 27,
+          "tiles": 27,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 224729
+        },
+        {
+          "zoom": 11,
+          "candidate_tiles": 12,
+          "tiles": 12,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 83820
+        },
+        {
+          "zoom": 10,
+          "candidate_tiles": 6,
+          "tiles": 6,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 34773
+        },
+        {
+          "zoom": 9,
+          "candidate_tiles": 2,
+          "tiles": 2,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 12332
+        },
+        {
+          "zoom": 8,
+          "candidate_tiles": 1,
+          "tiles": 1,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 5067
+        },
+        {
+          "zoom": 7,
+          "candidate_tiles": 1,
+          "tiles": 1,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 3136
+        },
+        {
+          "zoom": 6,
+          "candidate_tiles": 1,
+          "tiles": 1,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 2327
+        },
+        {
+          "zoom": 5,
+          "candidate_tiles": 1,
+          "tiles": 1,
+          "all_sentinel_tiles": 0,
+          "png_bytes": 2042
+        }
+      ],
+      "tile_count": 2026,
+      "png_bytes": 20860961,
+      "mbtiles": null,
+      "mbtiles_bytes": 22577152,
+      "pmtiles": "tmp/component1-output/sea-level-threshold-component-1-z16.pmtiles",
+      "pmtiles_bytes": 20849569
+    }
+  ],
+  "maplibre": {
+    "composition": "stacked-native-tiers",
+    "layer_order": [
+      11,
+      13,
+      14,
+      16
+    ],
+    "note": "Jeder Tier ist eine eigene raster-dem-Source mit seinem nativen maxzoom. Dadurch kann MapLibre niedrigere Tiers regul\u00e4r overzoomen; Sentinel 71 m liegt oberhalb des darstellbaren Threshold-Bereichs.",
+    "sources": [
+      {
+        "id": "sea_level_threshold_z11",
+        "type": "raster-dem",
+        "tileSize": 512,
+        "minzoom": 5,
+        "maxzoom": 11,
+        "encoding": "terrarium",
+        "archive": "tmp/component1-output/sea-level-threshold-component-1-z11.pmtiles"
+      },
+      {
+        "id": "sea_level_threshold_z13",
+        "type": "raster-dem",
+        "tileSize": 512,
+        "minzoom": 5,
+        "maxzoom": 13,
+        "encoding": "terrarium",
+        "archive": "tmp/component1-output/sea-level-threshold-component-1-z13.pmtiles"
+      },
+      {
+        "id": "sea_level_threshold_z14",
+        "type": "raster-dem",
+        "tileSize": 512,
+        "minzoom": 5,
+        "maxzoom": 14,
+        "encoding": "terrarium",
+        "archive": "tmp/component1-output/sea-level-threshold-component-1-z14.pmtiles"
+      },
+      {
+        "id": "sea_level_threshold_z16",
+        "type": "raster-dem",
+        "tileSize": 512,
+        "minzoom": 5,
+        "maxzoom": 16,
+        "encoding": "terrarium",
+        "archive": "tmp/component1-output/sea-level-threshold-component-1-z16.pmtiles"
+      }
+    ]
+  }
+}
