@@ -1,0 +1,241 @@
+name: Publish adaptive component one PMTiles
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-adaptive-component-one-pmtiles.yml
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: adaptive-component-one-pmtiles
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy Pillow pmtiles
+
+      - name: Download validated adaptive Component 1 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: adaptive-component-one-full
+          path: tmp/component1-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 33612333762
+
+      - name: Verify and extract threshold artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="$(awk '{print $1}' tmp/component1-artifact/component1-thresholds.tar.gz.sha256)"
+          ACTUAL="$(sha256sum tmp/component1-artifact/component1-thresholds.tar.gz | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+
+          mkdir -p tmp/component1-input
+          tar -xzf tmp/component1-artifact/component1-thresholds.tar.gz \
+            -C tmp/component1-input
+
+          test -f tmp/component1-input/report.json
+          test -d tmp/component1-input/threshold-domains
+          test -f tmp/component1-artifact/seed-plan.json
+
+      - name: Build reconstruction manifest
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "scripts")
+          from threshold_levels import LEVELS_M, SENTINEL_CLASS, levels_csv
+
+          report = json.loads(
+          	Path("tmp/component1-input/report.json").read_text(encoding="utf-8")
+          )
+          seed_plan = json.loads(
+          	Path("tmp/component1-artifact/seed-plan.json").read_text(encoding="utf-8")
+          )
+          plan = report["domain_plan"]
+          solver_domains = {
+          	int(domain["id"]): domain
+          	for domain in report["solver"]["domains"]
+          }
+
+          parent_zoom = int(plan["parent_zoom"])
+          coarse_factor = int(plan["coarse_factor"])
+          tile_size = 512
+          world_m = 2.0 * math.pi * 6378137.0
+          world_px = float((1 << parent_zoom) * tile_size)
+          sea_raster = seed_plan["coarse_sea_raster"]
+          west, _, _, north = [float(value) for value in sea_raster["bounds"]]
+
+          global_parent_x = (west + world_m / 2.0) / world_m * world_px
+          global_parent_y = (world_m / 2.0 - north) / world_m * world_px
+          global_coarse_x = global_parent_x / coarse_factor
+          global_coarse_y = global_parent_y / coarse_factor
+
+          rounded_x = round(global_coarse_x)
+          rounded_y = round(global_coarse_y)
+          if abs(global_coarse_x - rounded_x) > 1e-8:
+          	raise AssertionError((global_coarse_x, rounded_x))
+          if abs(global_coarse_y - rounded_y) > 1e-8:
+          	raise AssertionError((global_coarse_y, rounded_y))
+
+          offset_x = int(rounded_x) - int(sea_raster["origin_x"])
+          offset_y = int(rounded_y) - int(sea_raster["origin_y"])
+
+          domains = []
+          for domain_id, source in enumerate(plan["domains"], start=1):
+          	solver = solver_domains.get(domain_id)
+          	if solver is None:
+          		raise AssertionError(f"Solver-Domain {domain_id} fehlt.")
+
+          	zoom = int(source["zoom"])
+          	factor = int(source["fine_pixels_per_coarse_cell"])
+          	width = int(source["fine_width"])
+          	height = int(source["fine_height"])
+
+          	for key in ("zoom", "coarse_x0", "coarse_y0", "coarse_width", "coarse_height"):
+          		if int(source[key]) != int(solver[key]):
+          			raise AssertionError(
+          				f"Domain {domain_id}: Plan/Solver unterscheiden sich bei {key}."
+          			)
+
+          	x0 = (int(source["coarse_x0"]) + offset_x) * factor
+          	y0 = (int(source["coarse_y0"]) + offset_y) * factor
+          	domains.append({
+          		"id": domain_id,
+          		"zoom": zoom,
+          		"file": f"r{domain_id}-c{zoom}.u8",
+          		"global_pixel_x0": x0,
+          		"global_pixel_y0": y0,
+          		"global_pixel_x1": x0 + width,
+          		"global_pixel_y1": y0 + height,
+          		"width": width,
+          		"height": height,
+          		"coarse_x0": int(source["coarse_x0"]),
+          		"coarse_y0": int(source["coarse_y0"]),
+          		"coarse_width": int(source["coarse_width"]),
+          		"coarse_height": int(source["coarse_height"]),
+          	})
+
+          if len(domains) != int(plan["domain_count"]):
+          	raise AssertionError((len(domains), plan["domain_count"]))
+          if int(report["solver"]["sentinel_class"]) != SENTINEL_CLASS:
+          	raise AssertionError(
+          		(report["solver"]["sentinel_class"], SENTINEL_CLASS)
+          	)
+          if LEVELS_M[0] != 0.0 or LEVELS_M[-1] != 70.0:
+          	raise AssertionError((LEVELS_M[0], LEVELS_M[-1]))
+
+          manifest = {
+          	"schema_version": 1,
+          	"component_id": int(report["component_id"]),
+          	"parent_zoom": parent_zoom,
+          	"coarse_factor": coarse_factor,
+          	"tile_size": tile_size,
+          	"sentinel_class": SENTINEL_CLASS,
+          	"levels": levels_csv(),
+          	"domain_count": len(domains),
+          	"global_coarse_offset_x": offset_x,
+          	"global_coarse_offset_y": offset_y,
+          	"source_run_id": 33612333762,
+          	"source_artifact": "adaptive-component-one-full",
+          	"domains": domains,
+          }
+          Path("tmp/component1-input/reconstruction-manifest.json").write_text(
+          	json.dumps(manifest, indent=2) + "\n",
+          	encoding="utf-8",
+          )
+          print(json.dumps({
+          	"domains": len(domains),
+          	"native_zooms": sorted({domain["zoom"] for domain in domains}),
+          	"offset_x": offset_x,
+          	"offset_y": offset_y,
+          }, indent=2))
+          PY
+
+      - name: Build adaptive PMTiles pyramids
+        run: |
+          rm -rf tmp/component1-pyramid-work tmp/component1-output
+          python scripts/build_adaptive_threshold_pyramid.py \
+            --manifest tmp/component1-input/reconstruction-manifest.json \
+            --threshold-dir tmp/component1-input/threshold-domains \
+            --output-dir tmp/component1-output \
+            --work-dir tmp/component1-pyramid-work \
+            --minzoom 5 \
+            --cache-mib 1024 \
+            --pmtiles \
+            --delete-mbtiles
+
+      - name: Validate publish set
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("tmp/component1-output")
+          report = json.loads(
+          	(root / "adaptive-threshold-pyramid-report.json").read_text(
+          		encoding="utf-8"
+          	)
+          expected_zooms = [11, 13, 14, 16]
+          if report["native_zooms"] != expected_zooms:
+          	raise AssertionError(report["native_zooms"])
+          if report["domain_count"] != 13851:
+          	raise AssertionError(report["domain_count"])
+          if report["native_input_cells"] != 1085028352:
+          	raise AssertionError(report["native_input_cells"])
+
+          for zoom in expected_zooms:
+          	path = root / f"sea-level-threshold-component-1-z{zoom}.pmtiles"
+          	if not path.exists() or path.stat().st_size <= 127:
+          		raise AssertionError(path)
+          	print(f"{path.name}: {path.stat().st_size / (1024 ** 2):.2f} MiB")
+          PY
+
+      - name: Publish PMTiles to output
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output/adaptive-component-1
+          cp tmp/component1-output/sea-level-threshold-component-1-z11.pmtiles output/adaptive-component-1/
+          cp tmp/component1-output/sea-level-threshold-component-1-z13.pmtiles output/adaptive-component-1/
+          cp tmp/component1-output/sea-level-threshold-component-1-z14.pmtiles output/adaptive-component-1/
+          cp tmp/component1-output/sea-level-threshold-component-1-z16.pmtiles output/adaptive-component-1/
+          cp tmp/component1-output/adaptive-threshold-pyramid-report.json output/adaptive-component-1/
+          cp tmp/component1-input/reconstruction-manifest.json output/adaptive-component-1/
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add output/adaptive-component-1
+
+          if git diff --cached --quiet; then
+            echo "Adaptive Component-1 PMTiles sind bereits aktuell."
+            exit 0
+          fi
+
+          git commit -m "Publish adaptive component one PMTiles"
+          git push
