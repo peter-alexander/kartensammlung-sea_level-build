@@ -165,11 +165,11 @@ def insert_tile(db, zoom, x, y, data):
 		"""
 		INSERT INTO tiles (
 			zoom_level,
-			tile_column INTEGER,
+			tile_column,
 			tile_row,
 			tile_data
 		) VALUES (?, ?, ?, ?)
-		""".replace("tile_column INTEGER", "tile_column"),
+		""",
 		(int(zoom), int(x), tms_y, sqlite3.Binary(data)),
 	)
 
