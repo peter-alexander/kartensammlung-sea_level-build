@@ -201,6 +201,7 @@ jobs:
           	(root / "adaptive-threshold-pyramid-report.json").read_text(
           		encoding="utf-8"
           	)
+          )
           expected_zooms = [11, 13, 14, 16]
           if report["native_zooms"] != expected_zooms:
           	raise AssertionError(report["native_zooms"])
